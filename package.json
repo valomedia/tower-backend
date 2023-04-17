@@ -1,0 +1,12 @@
+{
+  "name": "tower-backend",
+  "version": "0.0.1",
+  "description": "AWS SAM backend for Tower",
+  "scripts": {
+    "deploy": "node ./deploy.js"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1359.0",
+    "fs-extra": "^11.1.1"
+  }
+}
