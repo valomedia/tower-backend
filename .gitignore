@@ -1,0 +1,10 @@
+#
+# .gitignore
+# tower-backend
+#
+# Created by Jean-Pierre Höhmann on 2023-04-17.
+#
+#
+
+node_modules/
+build/
