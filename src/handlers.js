@@ -24,7 +24,7 @@ const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
  */
 
 exports.index = async () => {
-    return response(200, 'text/plain', 'Success');
+    return response(200, 'application/json', JSON.stringify({ message: 'Success' }));
 }
 
 exports.join = async (event) => {
