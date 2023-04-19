@@ -23,12 +23,11 @@ const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
  * Handlers
  */
 
-exports.index = async (event, context, callback) => {
+exports.index = async () => {
     return response(200, 'text/plain', 'Success');
 }
 
-exports.join = async (event, context) => {
-    const meetingIdFormat = /^[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$/;
+exports.join = async (event) => {
     const query = event.queryStringParameters;
     if (!query.title || !query.name) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: title, name' }));
@@ -47,36 +46,13 @@ exports.join = async (event, context) => {
             );
         }
 
-        let request = {
-            // Use a UUID for the client request token to ensure that any request retries do not create multiple
-            // meetings.
-            ClientRequestToken: uuidv4(),
-
-            // Specify the media region (where the meeting is hosted). In this case, we use the region selected by the
-            // user.
-            MediaRegion: query.region,
-
-            // Our external ID for the meeting. For simplicity, this is just the meeting title right now.
-            ExternalMeetingId: query.title.substring(0, 64)
-        };
-
-        console.info('Creating new meeting: ' + JSON.stringify(request));
-        meeting = await chimeSDKMeetings.createMeeting(request).promise();
-
-        // Store the meeting in the table using the meeting title as the key.
-        await putMeeting(query.title, meeting);
+        console.info(`Creating new meeting ${query.title} in region ${query.region}`);
+        meeting = await createMeeting(query.title, query.region);
     }
 
     // Create new attendee for the meeting
     console.info('Adding new attendee');
-    const attendee = (await chimeSDKMeetings.createAttendee({
-        // The meeting ID of the created meeting to add the attendee to
-        MeetingId: meeting.Meeting.MeetingId,
-
-        // Our external ID for the user. For simplicity, this is just for random hex bytes, followed by the username
-        // for now.
-        ExternalUserId: `${uuidv4().substring(0, 8)}#${query.name}`.substring(0, 64)
-    }).promise());
+    const attendee = await createAttendee(meeting, query.name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let joinResponse = {
@@ -88,25 +64,29 @@ exports.join = async (event, context) => {
     return response(200, 'application/json', JSON.stringify(joinResponse, null, 2));
 };
 
-exports.end = async (event, context) => {
-    // Fetch the meeting by title
-    const meeting = await getMeeting(event.queryStringParameters.title);
+exports.end = async (event) => {
+    const query = event.queryStringParameters;
+    if (!query.title) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: title' }));
+    }
 
-    // End the meeting. All attendee connections will hang up.
-    await chimeSDKMeetings.deleteMeeting({ MeetingId: meeting.Meeting.MeetingId }).promise();
+    // Fetch the meeting by title
+    const meeting = await getMeeting(query.title);
+
+    if (meeting) { await deleteMeeting(meeting); }
     return response(200, 'application/json', JSON.stringify({}));
 }
 
-exports.deleteAttendee = async (event, context) => {
-    // Fetch the meeting by title
-    const meeting = await getMeeting(event.queryStringParameters.title);
+exports.deleteAttendee = async (event) => {
+    const query = event.queryStringParameters;
+    if (!query.title || !query.attendeeId) {
+        return response(400, 'application/json', JSON.stringify({ errer: 'Need parameters: title, attendeeId' }));
+    }
 
-    // Delete the attendee.  We currently don't store users, so the client needs to provide the Chime attendee ID
-    // directly (since we have no easy way of finding an attendee from the external user ID).
-    await chimeSDKMeetings.deleteAttendee({
-        MeetingId: meeting.Meeting.MeetingId,
-        AttendeeId: event.queryStringParameters.attendeeId
-    }).promise();
+    // Fetch the meeting by title
+    const meeting = await getMeeting(query.title);
+
+    await deleteAttendee(query.attendeeId, meeting);
     return response(200, 'application/json', JSON.stringify({}));
 }
 
@@ -115,33 +95,138 @@ exports.deleteAttendee = async (event, context) => {
  */
 
 /*
- * Retrieve a meeting from the meeting table using its title.
+ * Retrieve a meeting ID from the meeting table using its title.
+ *
+ * This just looks up the meeting ID in the database. If the meeting has ended, the result might be a stale ID for a
+ * meeting that no longer exists. The caller is expected to check whether the meeting actually exists before proceeding
+ * to use the meeting ID for anything.
  */
-async function getMeeting(title) {
+async function getMeetingId(title) {
     const result = await ddb.getItem({
         TableName: meetingsTableName,
         Key: {
             'Title': { S: title }
         }
     }).promise();
-    return result.Item ? JSON.parse(result.Item.Data.S) : null;
+    return result.Item ? result.Item.Data.S : null;
 }
 
 /*
- * Store a meeting in the meeting table under its key.
+ * Get a meeting by its title.
+ *
+ * This will return the meeting for the given title, if one exists.
  */
-async function putMeeting(title, meeting) {
+async function getMeeting(title) {
+    const meetingId = await getMeetingId(title)
+    if (!meetingId) { return null; }
+
+    const request = { MeetingId: meetingId }
+    console.debug('Getting meeting: ' + JSON.stringify(request));
+
+    const getMeetingResponse = await chimeSDKMeetings.getMeeting(request).promise().catch(_ => ({}));
+    console.debug('Got meeting: ' + JSON.stringify(getMeetingResponse));
+
+    return getMeetingResponse.Meeting;
+}
+
+/*
+ * Store a meetingID in the meeting table under its key.
+ */
+async function putMeetingId(title, meetingId) {
     await ddb.putItem({
         TableName: meetingsTableName,
         Item: {
             Title: { S: title },
-            Data: { S: JSON.stringify(meeting) },
+            Data: { S: meetingId },
 
             // Set time-to-live to one day, causing the meeting record to be cleaned up automatically after 24 hours.
             TTL: { N: `${Math.floor(Date.now() / 1000) + 60 * 60 * 24}`}
         }
     }).promise();
 }
+
+/*
+ * Store a meeting in the database.
+ */
+async function putMeeting(title, meeting) {
+    await putMeetingId(title, meeting.MeetingId);
+}
+
+/*
+ * Create a meeting and store it in the database.
+ */
+async function createMeeting(title, region){
+    let request = {
+        // Use a UUID for the client request token to ensure that any request retries do not create multiple
+        // meetings.
+        ClientRequestToken: uuidv4(),
+
+        // Specify the media region (where the meeting is hosted). In this case, we use the region selected by the
+        // user.
+        MediaRegion: region,
+
+        // Our external ID for the meeting. For simplicity, this is just the meeting title right now.
+        ExternalMeetingId: title.substring(0, 64)
+    };
+    console.debug('Creating meeting: ' + JSON.stringify(request));
+
+    const createMeetingResponse = await chimeSDKMeetings.createMeeting(request).promise();
+    console.debug('Created meeting: ' + JSON.stringify(createMeetingResponse));
+
+    const meeting = createMeetingResponse.Meeting;
+
+    // Store the meeting in the table using the meeting title as the key.
+    await putMeeting(title, meeting);
+
+    return meeting;
+}
+
+/*
+ * Delete a given meeting.
+ *
+ * All attendee connections will hang up.
+ */
+async function deleteMeeting(meeting) {
+    const request = { MeetingId: meeting.MeetingId };
+    console.debug('Deleting meeting: ' + JSON.stringify(request));
+    await chimeSDKMeetings.deleteMeeting(request).promise();
+}
+
+/*
+ * Create an attendee with a given name for a given meeting.
+ */
+async function createAttendee(meeting, name) {
+    const request = {
+        // The meeting ID of the created meeting to add the attendee to
+        MeetingId: meeting.MeetingId,
+
+        // Our external ID for the user. For simplicity, this is just for random hex bytes, followed by the username
+        // for now.
+        ExternalUserId: `${uuidv4().substring(0, 8)}#${name}`.substring(0, 64)
+    };
+    console.debug('Creating attendee: ' + JSON.stringify(request));
+
+    const createAttendeeResponse = await chimeSDKMeetings.createAttendee(request).promise();
+    console.debug('Created attendee: ' + JSON.stringify(createAttendeeResponse));
+
+    return createAttendeeResponse.Attendee;
+}
+
+/*
+ * Delete an attendee with a given ID from a given meeting.
+ *
+ * Delete the attendee.  We currently don't store users, so the client needs to provide the Chime attendee ID directly
+ * (since we have no easy way of finding an attendee from the external user ID).
+ */
+async function deleteAttendee(id, meeting) {
+    const request = {
+        MeetingId: meeting.MeetingId,
+        AttendeeId: id
+    }
+    console.debug('Deleting attendee: ' + JSON.stringify(request));
+    await chimeSDKMeetings.deleteAttendee(request).promise();
+}
+
 
 function response(statusCode, contentType, body, isBase64Encoded = false) {
     return {
