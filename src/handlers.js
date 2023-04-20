@@ -33,21 +33,15 @@ exports.join = async (event) => {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: title, name' }));
     }
 
+    const region = query.region || currentRegion;
+
     // Look up the meeting by its title
     let meeting = await getMeeting(query.title);
 
     // If no meeting, create one
     if (!meeting) {
-        if (!query.region) {
-            return response(
-                400,
-                'application/json',
-                JSON.stringify({ error: 'Need region parameter set if meeting has not yet been created' })
-            );
-        }
-
-        console.info(`Creating new meeting ${query.title} in region ${query.region}`);
-        meeting = await createMeeting(query.title, query.region);
+        console.info(`Creating new meeting ${query.title} in region ${region}`);
+        meeting = await createMeeting(query.title, region);
     }
 
     // Create new attendee for the meeting
