@@ -50,10 +50,8 @@ exports.join = async (event) => {
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let joinResponse = {
-        JoinInfo: {
-            Meeting: meeting,
-            Attendee: attendee
-        }
+        Meeting: meeting,
+        Attendee: attendee
     }
     return response(200, 'application/json', JSON.stringify(joinResponse, null, 2));
 };
