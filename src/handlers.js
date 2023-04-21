@@ -8,6 +8,7 @@
 
 const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
+const https = require('https');
 
 // Store meetings in a DynamoDB so attendees can join by meeting title
 const ddb = new AWS.DynamoDB();
@@ -15,6 +16,7 @@ const ddb = new AWS.DynamoDB();
 // Read environment.
 const currentRegion = process.env.REGION;
 const meetingsTableName = process.env.MEETINGS_TABLE_NAME;
+const authEndpoint = process.env.AUTH_ENDPOINT;
 
 const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
 
@@ -82,6 +84,27 @@ exports.deleteAttendee = async (event) => {
 
     await deleteAttendee(query.attendeeId, meeting);
     return response(200, 'application/json', JSON.stringify({}));
+}
+
+exports.auth = function(event, _, callback) {
+    const token = event.authorizationToken;
+    https
+        .request(
+            authEndpoint,
+            {
+                method: 'HEAD',
+                headers: { authorization: token }
+            },
+            (res) => {
+                if (res.statusCode === 200) {
+                    callback(null, generatePolicy('user', 'Allow'));
+                } else {
+                    callback('Unauthorized');
+                }
+            }
+        )
+        .on('error', (_) => callback('Error: Internal Server Error'))
+        .end();
 }
 
 /*
@@ -219,6 +242,31 @@ async function deleteAttendee(id, meeting) {
     await chimeSDKMeetings.deleteAttendee(request).promise();
 }
 
+/*
+ * Helper function to generate an IAM policy.
+ *
+ * This is used by the lambda token authorizer to authorize the user.
+ */
+function generatePolicy(principalId, effect) {
+    var authResponse = {};
+
+    authResponse.principalId = principalId
+    if (effect) {
+        var policyDocument = {};
+        policyDocument.Version = '2012-10-17';
+        policyDocument.Statement = [];
+
+        var statementOne = {};
+        statementOne.Action = 'execute-api:Invoke';
+        statementOne.Effect = effect;
+        statementOne.Resource = '*';
+
+        policyDocument.Statement[0] = statementOne;
+        authResponse.policyDocument = policyDocument;
+    }
+
+    return authResponse;
+}
 
 function response(statusCode, contentType, body, isBase64Encoded = false) {
     return {

@@ -13,6 +13,7 @@ const path = require('path');
 let region = 'eu-central-1';
 let bucket = '';
 let stack = '';
+let authEndpoint = 'https://tower-assist.valo-dev.de'
 let disablePrintingLogs = false;
 
 function usage() {
@@ -20,7 +21,8 @@ function usage() {
     console.log(`  -r, --region                 Target region, default '${region}'`);
     console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
     console.log(`  -s, --stack-name             CloudFormation stack name, required`);
-    console.log(`  -l, --disable-printing-logs  Disable printing logs`)
+    console.log(`  -l, --disable-printing-logs  Disable printing logs`);
+    console.log(`  --authentication-endpoint    Endpoint to check basic auth tokens against, default '${authEndpoint}`)
     console.log(`  -h, --help                   Show help and exit`);
 }
 
@@ -72,6 +74,9 @@ function parseArgs() {
             case '--disable-printing-logs':
                 disablePrintingLogs = true;
                 break;
+            case '--authentication-endpoint':
+                authEndpoint = getArgOrExit(++i, args);
+                break;
             default:
                 console.log(`Invalid argument ${args[i]}`);
                 usage();
@@ -122,7 +127,7 @@ if (!fs.existsSync('build')) {
     fs.mkdirSync('build');
 }
 
-console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}`);
+console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, authEndpoint ${authEndpoint}`);
 ensureBucket();
 spawnOrFail('npm', ['install'], {cwd: path.join(__dirname, 'src')});
 spawnOrFail(
@@ -131,7 +136,7 @@ spawnOrFail(
 );
 
 console.log('Deploying serverless application');
-let parameterOverrides = `Region=${region}`;
+let parameterOverrides = `Region=${region} AuthEndpoint=${authEndpoint}`;
 spawnOrFail(
     'sam',
     [

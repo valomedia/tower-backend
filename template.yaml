@@ -7,6 +7,10 @@ Parameters:
     Description: The AWS SDK Chime REGION
     Default: "eu-central-1"
     Type: String
+  AuthEndpoint:
+    Description: The url to check the basic auth tokens against
+    Default: "https://tower-assist.valo-dev.de"
+    Type: String
 
 Globals:
   Function:
@@ -17,8 +21,18 @@ Globals:
       Variables:
         MEETINGS_TABLE_NAME: !Ref Meetings
         REGION: !Ref Region
+        AUTH_ENDPOINT: !Ref AuthEndpoint
 
 Resources:
+  TowerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: BasicAuthLambdaTokenAuthorizer
+        Authorizers:
+          BasicAuthLambdaTokenAuthorizer:
+            FunctionArn: !GetAtt BasicAuthLambda.Arn
   ChimeMeetingsAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -71,7 +85,7 @@ Resources:
         AttributeName: "TTL"
         Enabled: true
   ChimeSdkIndexLambda:
-    Type: 'AWS::Serverless::Function'
+    Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.index
       CodeUri: src/
@@ -79,6 +93,7 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            RestApiId: !Ref TowerApi
             Path: /
             Method: GET
   ChimeSdkJoinLambda:
@@ -93,6 +108,7 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            RestApiId: !Ref TowerApi
             Path: /join
             Method: POST
   ChimeSdkDeleteAttendeeLambda:
@@ -107,6 +123,7 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            RestApiId: !Ref TowerApi
             Path: /deleteAttendee
             Method: POST
   ChimeSdkEndLambda:
@@ -121,9 +138,15 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            RestApiId: !Ref TowerApi
             Path: /end
             Method: POST
+  BasicAuthLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: handlers.auth
 Outputs:
   ApiURL:
     Description: "API endpoint URL for Prod environment"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    Value: !Sub "https://${TowerApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
