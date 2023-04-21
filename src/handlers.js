@@ -36,22 +36,24 @@ exports.join = async (event) => {
     const region = query.region || currentRegion;
 
     // Look up the meeting by its title
-    let meeting = await getMeeting(query.title);
+    let meetingResponse = await getMeeting(query.title);
 
     // If no meeting, create one
-    if (!meeting) {
+    if (!meetingResponse) {
         console.info(`Creating new meeting ${query.title} in region ${region}`);
-        meeting = await createMeeting(query.title, region);
+        meetingResponse = await createMeeting(query.title, region);
     }
 
     // Create new attendee for the meeting
     console.info('Adding new attendee');
-    const attendee = await createAttendee(meeting, query.name);
+    const attendeeResponse = await createAttendee(meetingResponse.Meeting, query.name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let joinResponse = {
-        Meeting: meeting,
-        Attendee: attendee
+        joinInfo: {
+            meetingResponse,
+            attendeeResponse
+        }
     }
     return response(200, 'application/json', JSON.stringify(joinResponse, null, 2));
 };
@@ -63,7 +65,7 @@ exports.end = async (event) => {
     }
 
     // Fetch the meeting by title
-    const meeting = await getMeeting(query.title);
+    const meeting = (await getMeeting(query.title)).Meeting;
 
     if (meeting) { await deleteMeeting(meeting); }
     return response(200, 'application/json', JSON.stringify({}));
@@ -76,7 +78,7 @@ exports.deleteAttendee = async (event) => {
     }
 
     // Fetch the meeting by title
-    const meeting = await getMeeting(query.title);
+    const meeting = (await getMeeting(query.title)).Meeting;
 
     await deleteAttendee(query.attendeeId, meeting);
     return response(200, 'application/json', JSON.stringify({}));
@@ -115,10 +117,10 @@ async function getMeeting(title) {
     const request = { MeetingId: meetingId }
     console.debug('Getting meeting: ' + JSON.stringify(request));
 
-    const getMeetingResponse = await chimeSDKMeetings.getMeeting(request).promise().catch(_ => ({}));
-    console.debug('Got meeting: ' + JSON.stringify(getMeetingResponse));
+    const meetingResponse = await chimeSDKMeetings.getMeeting(request).promise().catch(_ => ({}));
+    console.debug('Got meeting: ' + JSON.stringify(meetingResponse));
 
-    return getMeetingResponse.Meeting;
+    return meetingResponse
 }
 
 /*
@@ -162,15 +164,13 @@ async function createMeeting(title, region){
     };
     console.debug('Creating meeting: ' + JSON.stringify(request));
 
-    const createMeetingResponse = await chimeSDKMeetings.createMeeting(request).promise();
-    console.debug('Created meeting: ' + JSON.stringify(createMeetingResponse));
-
-    const meeting = createMeetingResponse.Meeting;
+    const meetingResponse = await chimeSDKMeetings.createMeeting(request).promise();
+    console.debug('Created meeting: ' + JSON.stringify(meetingResponse));
 
     // Store the meeting in the table using the meeting title as the key.
-    await putMeeting(title, meeting);
+    await putMeeting(title, meetingResponse.Meeting);
 
-    return meeting;
+    return meetingResponse;
 }
 
 /*
@@ -198,10 +198,10 @@ async function createAttendee(meeting, name) {
     };
     console.debug('Creating attendee: ' + JSON.stringify(request));
 
-    const createAttendeeResponse = await chimeSDKMeetings.createAttendee(request).promise();
-    console.debug('Created attendee: ' + JSON.stringify(createAttendeeResponse));
+    const attendeeResponse = await chimeSDKMeetings.createAttendee(request).promise();
+    console.debug('Created attendee: ' + JSON.stringify(attendeeResponse));
 
-    return createAttendeeResponse.Attendee;
+    return attendeeResponse;
 }
 
 /*
