@@ -74,7 +74,7 @@ exports.end = async (event) => {
 exports.deleteAttendee = async (event) => {
     const query = event.queryStringParameters;
     if (!query.title || !query.attendeeId) {
-        return response(400, 'application/json', JSON.stringify({ errer: 'Need parameters: title, attendeeId' }));
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: title, attendeeId' }));
     }
 
     // Fetch the meeting by title
