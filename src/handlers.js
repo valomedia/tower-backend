@@ -39,7 +39,7 @@ exports.join = async (event) => {
     let meetingResponse = await getMeeting(query.title);
 
     // If no meeting, create one
-    if (!meetingResponse) {
+    if (!meetingResponse.Meeting) {
         console.info(`Creating new meeting ${query.title} in region ${region}`);
         meetingResponse = await createMeeting(query.title, region);
     }
