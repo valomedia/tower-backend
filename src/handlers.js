@@ -143,7 +143,7 @@ async function getMeetingId(title) {
  */
 async function getMeeting(title) {
     const meetingId = await getMeetingId(title)
-    if (!meetingId) { return null; }
+    if (!meetingId) { return {}; }
 
     const request = { MeetingId: meetingId }
     console.debug('Getting meeting: ' + JSON.stringify(request));
