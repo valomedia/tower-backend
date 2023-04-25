@@ -60,6 +60,7 @@ Resources:
         - Ref: ChimeSdkJoinLambdaRole
         - Ref: ChimeSdkEndLambdaRole
         - Ref: ChimeSdkDeleteAttendeeLambdaRole
+        - Ref: ChimeSdkPollLambdaRole
   Meetings:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
@@ -141,6 +142,21 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /end
             Method: POST
+  ChimeSdkPollLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.poll
+      CodeUri: src/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Meetings
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /poll
+            Method: GET
   BasicAuthLambda:
     Type: AWS::Serverless::Function
     Properties:

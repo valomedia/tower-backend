@@ -94,6 +94,18 @@ exports.deleteAttendee = async (event) => {
     return response(200, 'application/json', JSON.stringify({}));
 }
 
+exports.poll = async (event) => {
+    const query = event.queryStringParameters;
+    if (!query.title) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: title' }));
+    }
+
+    // Fetch the meeting by title
+    const meetingResponse = await getMeeting(query.title);
+
+    return response(meetingResponse.Meeting ? '200' : '404', 'application/json', JSON.stringify(meetingResponse, null, 2));
+}
+
 exports.auth = function(event, _, callback) {
     const token = event.authorizationToken;
     https
