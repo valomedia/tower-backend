@@ -29,34 +29,23 @@ exports.index = async () => {
 }
 
 exports.join = async (event) => {
-    const query = event.queryStringParameters;
-    if (!query.title || !query.name) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: title, name' }));
-    }
-
-    const region = query.region || currentRegion;
+    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
+    // supplied via basic auth.
+    const name = event.requestContext.authorizer.principalId;
+    const title = event.requestContext.authorizer.principalId;
 
     // Look up the meeting by its title
-    let meetingResponse = await getMeeting(query.title);
+    let meetingResponse = await getMeeting(title);
 
     // If no meeting, create one if requested.
     if (!meetingResponse.Meeting) {
-        if (query.createMeeting) {
-            console.info(`Creating new meeting ${query.title} in region ${region}`);
-            meetingResponse = await createMeeting(query.title, region);
-        } else {
-            return response(400, 'application/json', JSON.stringify({}));
-        }
-    }
-
-    // If still no meeting, return an error.
-    if (!meetingResponse.Meeting) {
-        return response(500, 'application/json', JSON.stringify(meetingResponse));
+        console.info(`Creating new meeting ${title} in region ${currentRegion}`);
+        meetingResponse = await createMeeting(title, currentRegion);
     }
 
     // Create new attendee for the meeting
     console.info('Adding new attendee');
-    const attendeeResponse = await createAttendee(meetingResponse.Meeting, query.name);
+    const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let joinResponse = {
@@ -69,13 +58,12 @@ exports.join = async (event) => {
 };
 
 exports.end = async (event) => {
-    const query = event.queryStringParameters;
-    if (!query.title) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: title' }));
-    }
+    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
+    // supplied via basic auth.
+    const title = event.requestContext.authorizer.principalId;
 
     // Fetch the meeting by title
-    const meeting = (await getMeeting(query.title)).Meeting;
+    const meeting = (await getMeeting(title)).Meeting;
 
     if (meeting) { await deleteMeeting(meeting); }
     return response(200, 'application/json', JSON.stringify({}));
@@ -83,31 +71,36 @@ exports.end = async (event) => {
 
 exports.deleteAttendee = async (event) => {
     const query = event.queryStringParameters;
-    if (!query.title || !query.attendeeId) {
+    if (!query || !query.attendeeId) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: title, attendeeId' }));
     }
 
+    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
+    // supplied via basic auth.
+    const title = event.requestContext.authorizer.principalId;
+
     // Fetch the meeting by title
-    const meeting = (await getMeeting(query.title)).Meeting;
+    const meeting = (await getMeeting(title)).Meeting;
 
     await deleteAttendee(query.attendeeId, meeting);
     return response(200, 'application/json', JSON.stringify({}));
 }
 
 exports.poll = async (event) => {
-    const query = event.queryStringParameters;
-    if (!query.title) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: title' }));
-    }
+    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
+    // supplied via basic auth.
+    const title = event.requestContext.authorizer.principalId;
 
     // Fetch the meeting by title
-    const meetingResponse = await getMeeting(query.title);
+    const meetingResponse = await getMeeting(title);
 
     return response(meetingResponse.Meeting ? '200' : '404', 'application/json', JSON.stringify(meetingResponse, null, 2));
 }
 
 exports.auth = function(event, _, callback) {
     const token = event.authorizationToken;
+    const principalId = Buffer.from(token.split(' ')[1], 'base64').toString('utf-8').split(':')[0];
+
     https
         .request(
             authEndpoint,
@@ -117,7 +110,7 @@ exports.auth = function(event, _, callback) {
             },
             (res) => {
                 if (res.statusCode === 200) {
-                    callback(null, generatePolicy('user', 'Allow'));
+                    callback(null, generatePolicy(principalId, 'Allow'));
                 } else {
                     callback('Unauthorized');
                 }
@@ -268,7 +261,7 @@ async function deleteAttendee(id, meeting) {
  * This is used by the lambda token authorizer to authorize the user.
  */
 function generatePolicy(principalId, effect) {
-    var authResponse = {};
+    let authResponse = {};
 
     authResponse.principalId = principalId
     if (effect) {
@@ -285,6 +278,7 @@ function generatePolicy(principalId, effect) {
         authResponse.policyDocument = policyDocument;
     }
 
+    console.log('Generated policy: ' + JSON.stringify(authResponse));
     return authResponse;
 }
 
