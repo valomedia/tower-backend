@@ -20,7 +20,6 @@ const authEndpoint = process.env.AUTH_ENDPOINT;
 
 const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
 
-
 /*
  * Handlers
  */
@@ -40,10 +39,19 @@ exports.join = async (event) => {
     // Look up the meeting by its title
     let meetingResponse = await getMeeting(query.title);
 
-    // If no meeting, create one
+    // If no meeting, create one if requested.
     if (!meetingResponse.Meeting) {
-        console.info(`Creating new meeting ${query.title} in region ${region}`);
-        meetingResponse = await createMeeting(query.title, region);
+        if (query.createMeeting) {
+            console.info(`Creating new meeting ${query.title} in region ${region}`);
+            meetingResponse = await createMeeting(query.title, region);
+        } else {
+            return response(400, 'application/json', JSON.stringify({}));
+        }
+    }
+
+    // If still no meeting, return an error.
+    if (!meetingResponse.Meeting) {
+        return response(500, 'application/json', JSON.stringify(meetingResponse));
     }
 
     // Create new attendee for the meeting
