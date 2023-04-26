@@ -16,7 +16,7 @@ const ddb = new AWS.DynamoDB();
 // Read environment.
 const currentRegion = process.env.REGION;
 const meetingsTableName = process.env.MEETINGS_TABLE_NAME;
-const authEndpoint = process.env.AUTH_ENDPOINT;
+const authUrl = process.env.AUTH_URL;
 
 const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
 
@@ -103,7 +103,7 @@ exports.auth = function(event, _, callback) {
 
     https
         .request(
-            authEndpoint,
+            authUrl,
             {
                 method: 'HEAD',
                 headers: { authorization: token }
@@ -287,8 +287,6 @@ function response(statusCode, contentType, body, isBase64Encoded = false) {
         statusCode: statusCode,
         headers: {
             'Content-Type': contentType,
-            'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'require-corp'
         },
         body: body,
         isBase64Encoded

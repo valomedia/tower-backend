@@ -7,9 +7,12 @@ Parameters:
     Description: The AWS SDK Chime REGION
     Default: "eu-central-1"
     Type: String
-  AuthEndpoint:
+  AuthUrl:
     Description: The url to check the basic auth tokens against
-    Default: "https://tower-assist.valo-dev.de"
+    Type: String
+  AllowOrigin:
+    Description: Value for the Access-Control-Allow-Origin CORS-Header
+    Default: ""
     Type: String
 
 Globals:
@@ -21,7 +24,7 @@ Globals:
       Variables:
         MEETINGS_TABLE_NAME: !Ref Meetings
         REGION: !Ref Region
-        AUTH_ENDPOINT: !Ref AuthEndpoint
+        AUTH_URL: !Ref AuthUrl
 
 Resources:
   TowerApi:
@@ -30,9 +33,25 @@ Resources:
       StageName: Prod
       Auth:
         DefaultAuthorizer: BasicAuthLambdaTokenAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           BasicAuthLambdaTokenAuthorizer:
             FunctionArn: !GetAtt BasicAuthLambda.Arn
+      Cors:
+        AllowMethods: "'POST, GET'"
+        AllowOrigin: !Sub
+          - "'${Origin}'"
+          - Origin: !Ref AllowOrigin
+        MaxAge: "'600'"
+        AllowCredentials: true
+      GatewayResponses:
+        UNAUTHORIZED:
+          StatusCode: 401
+          ResponseParameters:
+            Headers:
+              WWW-Authenticate: "'Basic'"
+          ResponseTemplates:
+            "application/json": {"message": "Unauthorized"}
   ChimeMeetingsAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:

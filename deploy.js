@@ -13,16 +13,20 @@ const path = require('path');
 let region = 'eu-central-1';
 let bucket = '';
 let stack = '';
-let authEndpoint = 'https://tower-assist.valo-dev.de'
+let authUrl = '';
+let allowOrigin = '';
 let disablePrintingLogs = false;
 
 function usage() {
-    console.log(`Usage: deploy.sh [-r region] [-b bucket] [-s stack]`);
+    console.log(`Usage: deploy.sh [-r region] [-b bucket] [-s stack] [--auth-url auth-url]`);
+    console.log(`Example: deploy.sh -b tower-backend -s tower-backend --auth-url https://tower-assist.valo-dev.de`);
+    console.log(`Options:`);
     console.log(`  -r, --region                 Target region, default '${region}'`);
     console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
     console.log(`  -s, --stack-name             CloudFormation stack name, required`);
+    console.log(`  --auth-url                   Endpoint to check basic auth tokens against, required`)
+    console.log(`  --allow-origin               Value for the Access-Control-Allow-Origin CORS-header, optional`);
     console.log(`  -l, --disable-printing-logs  Disable printing logs`);
-    console.log(`  --authentication-endpoint    Endpoint to check basic auth tokens against, default '${authEndpoint}`)
     console.log(`  -h, --help                   Show help and exit`);
 }
 
@@ -74,8 +78,11 @@ function parseArgs() {
             case '--disable-printing-logs':
                 disablePrintingLogs = true;
                 break;
-            case '--authentication-endpoint':
-                authEndpoint = getArgOrExit(++i, args);
+            case '--auth-url':
+                authUrl = getArgOrExit(++i, args);
+                break;
+            case '--allow-origin':
+                allowOrigin = getArgOrExit(++i, args);
                 break;
             default:
                 console.log(`Invalid argument ${args[i]}`);
@@ -85,7 +92,7 @@ function parseArgs() {
         ++i;
     }
 
-    if (!stack.trim() || !bucket.trim()) {
+    if (!stack.trim() || !bucket.trim() || !authUrl.trim()) {
         console.log('Missing required parameters');
         usage();
         process.exit(1);
@@ -127,7 +134,7 @@ if (!fs.existsSync('build')) {
     fs.mkdirSync('build');
 }
 
-console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, authEndpoint ${authEndpoint}`);
+console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, authUrl ${authUrl}`);
 ensureBucket();
 spawnOrFail('npm', ['install'], {cwd: path.join(__dirname, 'src')});
 spawnOrFail(
@@ -136,7 +143,7 @@ spawnOrFail(
 );
 
 console.log('Deploying serverless application');
-let parameterOverrides = `Region=${region} AuthEndpoint=${authEndpoint}`;
+let parameterOverrides = `Region=${region} AuthUrl=${authUrl} ${allowOrigin && "AllowOrigin=" + allowOrigin}`;
 spawnOrFail(
     'sam',
     [
