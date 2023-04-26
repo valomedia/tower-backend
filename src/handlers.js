@@ -72,7 +72,7 @@ exports.end = async (event) => {
 exports.deleteAttendee = async (event) => {
     const query = event.queryStringParameters;
     if (!query || !query.attendeeId) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: title, attendeeId' }));
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: attendeeId' }));
     }
 
     // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
