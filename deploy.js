@@ -19,8 +19,8 @@ let allowOrigin = '';
 let disablePrintingLogs = false;
 
 function usage() {
-    console.log(`Usage: deploy.sh [-r region] [-b bucket] [-s stack] [--auth-url auth-url]`);
-    console.log(`Example: deploy.sh -b tower-backend -s tower-backend --auth-url https://tower-assist.valo-dev.de`);
+    console.log(`Usage: deploy.js [-r region] [-b bucket] [-s stack] [--auth-url auth-url]`);
+    console.log(`Example: deploy.js -b tower-backend -s tower-backend --auth-url https://tower-assist.valo-dev.de`);
     console.log(`Options:`);
     console.log(`  -r, --region                 Target region, default '${region}'`);
     console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
