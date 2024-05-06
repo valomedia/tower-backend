@@ -76,6 +76,7 @@ Resources:
               - 's3:GetBucketLocation'
             Resource: '*'
       Roles:
+        - Ref: ChimeSdkStartLambdaRole
         - Ref: ChimeSdkJoinLambdaRole
         - Ref: ChimeSdkEndLambdaRole
         - Ref: ChimeSdkDeleteAttendeeLambdaRole
@@ -88,6 +89,10 @@ Resources:
       AttributeDefinitions:
         - AttributeName: "Title"
           AttributeType: "S"
+        - AttributeName: "DateTime"
+          AttributeType: "S"
+        - AttributeName: "PartitionKey"
+          AttributeType: "S"
         - AttributeName: "Passcode"
           AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
@@ -95,6 +100,14 @@ Resources:
         - AttributeName: "Title"
           KeyType: HASH
       GlobalSecondaryIndexes:
+        - IndexName: "DateTime"
+          KeySchema:
+            - AttributeName: "PartitionKey"
+              KeyType: HASH
+            - AttributeName: "DateTime"
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
         - IndexName: "Passcode"
           KeySchema:
             - AttributeName: "Passcode"
@@ -116,6 +129,21 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /
             Method: GET
+  ChimeSdkStartLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.start
+      CodeUri: src/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Meetings
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /start
+            Method: POST
   ChimeSdkJoinLambda:
     Type: AWS::Serverless::Function
     Properties:

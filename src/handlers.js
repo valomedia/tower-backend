@@ -10,7 +10,7 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
 
-// Store meetings in a DynamoDB so attendees can join by meeting title
+// Meetings with users waiting for an assistant to join.
 const ddb = new AWS.DynamoDB();
 
 // Read environment.
@@ -28,23 +28,47 @@ exports.index = async () => {
     return response(200, 'application/json', JSON.stringify({ message: 'Success' }));
 }
 
-exports.join = async (event) => {
-    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
-    // supplied via basic auth.
+exports.start = async (event) => {
     const name = event.requestContext.authorizer.principalId;
-    const title = event.requestContext.authorizer.principalId;
 
-    // Look up the meeting by its title
-    let meetingResponse = await getMeeting(title);
+    console.info(`Creating new meeting for user ${name} in region ${currentRegion}`);
 
-    // If no meeting, create one if requested.
+    const meetingResponse = await createMeeting(name, currentRegion);
+
+    // Add the meeting to the queue for an assistant to join.
+    await enqueueMeeting(name, meetingResponse.Meeting);
+
+    // Create a new attendee for the meeting
+    console.info(`Adding attendee ${name}`);
+    const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
+
+    // Return the meeting and attendee responses. The client will use these to join the meeting.
+    let startResponse = {
+        joinInfo: {
+            meetingResponse,
+            attendeeResponse
+        }
+    }
+    return response(200, 'application/json', JSON.stringify(startResponse, null, 2));
+}
+
+exports.join = async (event) => {
+    const name = event.requestContext.authorizer.principalId;
+
+    console.info(`Connecting assistant ${name} to a user`);
+
+    const meetingResponse = await getMeeting();
+
     if (!meetingResponse.Meeting) {
-        console.info(`Creating new meeting ${title} in region ${currentRegion}`);
-        meetingResponse = await createMeeting(title, currentRegion);
+        console.info(`There is no meeting in the queue (presumably another assistant was faster to pick up).`);
+        return response(404, 'application/json', JSON.stringify({ error: 'No meeting found' }));
     }
 
+    // Remove the meeting from the queue, now that an assistant has joined.
+    await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId);
+
     // Create new attendee for the meeting
-    console.info('Adding new attendee');
+    console.info(`Adding assistant ${name} to meeting for ${meetingResponse.Meeting.ExternalMeetingId}.`);
     const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
@@ -58,42 +82,32 @@ exports.join = async (event) => {
 };
 
 exports.end = async (event) => {
-    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
-    // supplied via basic auth.
-    const title = event.requestContext.authorizer.principalId;
+    const query = event.queryStringParameters;
+    if (!query || !query.meetingId) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: meetingId' }));
+    }
 
-    // Fetch the meeting by title
-    const meeting = (await getMeeting(title)).Meeting;
+    const meetingId = query.meetingId;
 
-    if (meeting) { await deleteMeeting(meeting); }
+    await endMeeting(meetingId);
     return response(200, 'application/json', JSON.stringify({}));
 }
 
 exports.deleteAttendee = async (event) => {
     const query = event.queryStringParameters;
-    if (!query || !query.attendeeId) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: attendeeId' }));
+    if (!query || !query.attendeeId || !query.meetingId) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: attendeeId, meetingId' }));
     }
 
-    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
-    // supplied via basic auth.
-    const title = event.requestContext.authorizer.principalId;
+    const attendeeId = query.attendeeId;
+    const meetingId = query.meetingId;
 
-    // Fetch the meeting by title
-    const meeting = (await getMeeting(title)).Meeting;
-
-    await deleteAttendee(query.attendeeId, meeting);
+    await deleteAttendee(attendeeId, meetingId);
     return response(200, 'application/json', JSON.stringify({}));
 }
 
-exports.poll = async (event) => {
-    // Until individual accounts are implemented, the meeting title and attendee name are both simply the username
-    // supplied via basic auth.
-    const title = event.requestContext.authorizer.principalId;
-
-    // Fetch the meeting by title
-    const meetingResponse = await getMeeting(title);
-
+exports.poll = async (_) => {
+    const meetingResponse = await getMeeting();
     return response(meetingResponse.Meeting ? '200' : '404', 'application/json', JSON.stringify(meetingResponse, null, 2));
 }
 
@@ -125,12 +139,13 @@ exports.auth = function(event, _, callback) {
  */
 
 /*
- * Retrieve a meeting ID from the meeting table using its title.
+ * Retrieve a meeting ID from the meeting table using its externalMeetingId.
  *
  * This just looks up the meeting ID in the database. If the meeting has ended, the result might be a stale ID for a
  * meeting that no longer exists. The caller is expected to check whether the meeting actually exists before proceeding
  * to use the meeting ID for anything.
  */
+// noinspection JSUnusedLocalSymbols
 async function getMeetingId(title) {
     const result = await ddb.getItem({
         TableName: meetingsTableName,
@@ -142,32 +157,53 @@ async function getMeetingId(title) {
 }
 
 /*
- * Get a meeting by its title.
+ * Get a meeting from the queue
  *
- * This will return the meeting for the given title, if one exists.
+ * This will return the oldest meeting in the queue, or an empty object, if the queue is empty.
  */
-async function getMeeting(title) {
-    const meetingId = await getMeetingId(title)
-    if (!meetingId) { return {}; }
+async function getMeeting() {
+    console.debug('Finding oldest meeting in queue.');
+    const queryOutput = await ddb.query({
+        TableName: meetingsTableName,
+        IndexName: 'DateTime',
+        KeyConditionExpression: '#pk = :pk',
+        ExpressionAttributeValues: {
+            ':pk': { S: '1' }
+        },
+        ExpressionAttributeNames: {
+            '#pk': "PartitionKey"
+        },
+        Limit: 1
+    }).promise();
+    if (!queryOutput.Items.length) { return {}; }
+    const meetingId = queryOutput.Items[0].Data.S;
+    const meetingTitle = queryOutput.Items[0].Title.S;
 
-    const request = { MeetingId: meetingId }
-    console.debug('Getting meeting: ' + JSON.stringify(request));
-
-    const meetingResponse = await chimeSDKMeetings.getMeeting(request).promise().catch(_ => ({}));
+    console.debug(`User ${meetingTitle} is first in line.`);
+    const meetingResponse = await chimeSDKMeetings
+        .getMeeting({ MeetingId: meetingId })
+        .promise()
+        .catch(async _ => {
+            console.debug('Meeting no longer exists (user hung up while waiting), dequeueing and getting another one.');
+            await dequeueMeeting(meetingTitle);
+            return await getMeeting();
+        });
     console.debug('Got meeting: ' + JSON.stringify(meetingResponse));
 
-    return meetingResponse
+    return meetingResponse;
 }
 
 /*
- * Store a meetingID in the meeting table under its key.
+ * Store a meeting in the database of meetings waiting for an assistant.
  */
-async function putMeetingId(title, meetingId) {
+async function enqueueMeeting(title, meeting) {
     await ddb.putItem({
         TableName: meetingsTableName,
         Item: {
             Title: { S: title },
-            Data: { S: meetingId },
+            PartitionKey: { S: "1" },
+            DateTime: { S: (new Date()).toISOString() },
+            Data: { S: meeting.MeetingId },
 
             // Set time-to-live to one day, causing the meeting record to be cleaned up automatically after 24 hours.
             TTL: { N: `${Math.floor(Date.now() / 1000) + 60 * 60 * 24}`}
@@ -176,10 +212,15 @@ async function putMeetingId(title, meetingId) {
 }
 
 /*
- * Store a meeting in the database.
+ * Remove a meeting from the database of meetings waiting for an assistant.
  */
-async function putMeeting(title, meeting) {
-    await putMeetingId(title, meeting.MeetingId);
+async function dequeueMeeting(title) {
+    await ddb.deleteItem({
+        TableName: meetingsTableName,
+        Key: {
+            Title: { S: title }
+        }
+    }).promise();
 }
 
 /*
@@ -203,21 +244,17 @@ async function createMeeting(title, region){
     const meetingResponse = await chimeSDKMeetings.createMeeting(request).promise();
     console.debug('Created meeting: ' + JSON.stringify(meetingResponse));
 
-    // Store the meeting in the table using the meeting title as the key.
-    await putMeeting(title, meetingResponse.Meeting);
-
     return meetingResponse;
 }
 
 /*
- * Delete a given meeting.
+ * End a given meeting.
  *
  * All attendee connections will hang up.
  */
-async function deleteMeeting(meeting) {
-    const request = { MeetingId: meeting.MeetingId };
-    console.debug('Deleting meeting: ' + JSON.stringify(request));
-    await chimeSDKMeetings.deleteMeeting(request).promise();
+async function endMeeting(meetingId) {
+    console.debug(`Ending meeting: ${meetingId}`);
+    await chimeSDKMeetings.deleteMeeting({ MeetingId: meetingId }).promise();
 }
 
 /*
@@ -246,10 +283,10 @@ async function createAttendee(meeting, name) {
  * Delete the attendee.  We currently don't store users, so the client needs to provide the Chime attendee ID directly
  * (since we have no easy way of finding an attendee from the external user ID).
  */
-async function deleteAttendee(id, meeting) {
+async function deleteAttendee(attentdeeId, meetingId) {
     const request = {
-        MeetingId: meeting.MeetingId,
-        AttendeeId: id
+        MeetingId: meetingId,
+        AttendeeId: attentdeeId
     }
     console.debug('Deleting attendee: ' + JSON.stringify(request));
     await chimeSDKMeetings.deleteAttendee(request).promise();
