@@ -93,8 +93,6 @@ Resources:
           AttributeType: "S"
         - AttributeName: "PartitionKey"
           AttributeType: "S"
-        - AttributeName: "Passcode"
-          AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
         - AttributeName: "Title"
@@ -106,12 +104,6 @@ Resources:
               KeyType: HASH
             - AttributeName: "DateTime"
               KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: "Passcode"
-          KeySchema:
-            - AttributeName: "Passcode"
-              KeyType: HASH
           Projection:
             ProjectionType: ALL
       TimeToLiveSpecification:
