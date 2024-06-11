@@ -30,14 +30,17 @@ Deploying the backend in this mode will look something like this:
 
 ```shell
 npm run deploy -- \
-    -b tower-backend \
-    -s tower-backend \
-    --auth-url https://tower-assist.valo-dev.de
+    -b tower-backend-prod \
+    -s tower-backend-prod \
+    --stage-name Prod \
+    --auth-url https://auth.tower-assist.de
 ```
 
-In this command, `tower-backend` is the name of the bucket (`-b`) to build into (and deploy from) and the name of the
-CloudFormation stack (`-s`).  The `--auth-url` should be the url of tower-assist (this is used by the backend to check
-whether users are authenticated on the frontend before authorizing them). 
+In this command, `tower-backend-prod` is the name of the bucket (`-b`) to build into (and deploy from) and the name 
+of the CloudFormation stack (`-s`). The `--stage-name` is used as the stage name for the AWS SAM API. The actual name 
+doesn't matter much, choose whatever name describes the purpose of that particular deployment. The `--auth-url` 
+should be any url that the backend can GET and that checks the authorization header and answers `200 OK` if the user 
+should be authorized and `401 UNAUTHORIZED` if the user should not be authorized.
 
 ##### Cross-Origin
 
@@ -49,17 +52,20 @@ Deploying the backend in this mode will look something like this:
 
 ```shell
 npm run deploy -- \
-    -b tower-backend \
-    -s tower-backend \
+    -b tower-backend-prod \
+    -s tower-backend-prod \
+    --stage-name Prod \
     --auth-url https://tower-assist.valo-dev.de/auth \
     --allow-origin https://tower-assist.valo-dev.de
 ```
 
-In this command, `tower-backend` is the name of the bucket (`-b`) to build into (and deploy from) and the name of the
-CloudFormation stack (`-s`).  The `--auth-url` should be any url that the backend can GET and that checks the authorization
-header and answers `200 OK` if the user should be authorized and `403 FORBIDDEN` if the user should not be authorized.
-If tower-assist makes cross-origin requests, `--allow-origin` needs to be set to the origin the client is making the
-requests from. If tower-assist is configured to use a reverse proxy, this option can be left out.
+In this command, `tower-backend-prod` is the name of the bucket (`-b`) to build into (and deploy from) and the name 
+of the CloudFormation stack (`-s`). The `--stage-name` is used as the stage name for the AWS SAM API. The actual name 
+doesn't matter much, choose whatever name describes the purpose of that particular deployment. The `--auth-url` 
+should be any url that the backend can GET and that checks the authorization header and answers `200 OK` if the user 
+should be authorized and `401 UNAUTHORIZED` if the user should not be authorized. If tower-assist makes cross-origin 
+requests, `--allow-origin` needs to be set to the origin the client is making the requests from. If tower-assist is 
+configured to use a reverse proxy, this option can be left out.
 
 #### Updating an Existing Deployment
 
@@ -91,6 +97,13 @@ bucket is not emptied automatically.
 
 CloudFormation stack name, required.  This is the name for the CloudFormation stack to deploy the backend in.  It will
 be created during deployment.  If an existing stack is given, the deployment will be updated.
+
+#### `--stage-name`
+
+SAM stage name, required. This is the stage name for the AWS SAM API. The stage name doesn't really matter, since 
+there will always be exactly one stage in the stack. However, it is still useful to use a name that matches the purpose 
+of the deployment (such as `Dev`, `Staging`, or `Prod`), to prevent confusion when assigning gateways to the various 
+APIs down the road.
 
 #### `--auth-url`
 
