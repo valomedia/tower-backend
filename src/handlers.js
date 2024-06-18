@@ -67,7 +67,7 @@ exports.join = async (event) => {
     // Remove the meeting from the queue, now that an assistant has joined.
     await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId);
 
-    // Create new attendee for the meeting
+    // Create a new attendee for the meeting
     console.info(`Adding assistant ${name} to meeting for ${meetingResponse.Meeting.ExternalMeetingId}.`);
     const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
 
@@ -283,10 +283,10 @@ async function createAttendee(meeting, name) {
  * Delete the attendee.  We currently don't store users, so the client needs to provide the Chime attendee ID directly
  * (since we have no easy way of finding an attendee from the external user ID).
  */
-async function deleteAttendee(attentdeeId, meetingId) {
+async function deleteAttendee(attendeeId, meetingId) {
     const request = {
         MeetingId: meetingId,
-        AttendeeId: attentdeeId
+        AttendeeId: attendeeId
     }
     console.debug('Deleting attendee: ' + JSON.stringify(request));
     await chimeSDKMeetings.deleteAttendee(request).promise();
