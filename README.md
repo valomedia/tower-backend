@@ -21,9 +21,9 @@ unnecessary charges.
 
 ##### Reverse proxy
 
-In reverse proxy mode, tower-assist itself is protected by basic auth.  This means the user will be prompted for
+In reverse proxy mode, tower-staff itself is protected by basic auth.  This means the user will be prompted for
 credentials immediately after opening the web-app.  To avoid having to reenter the credentials when accessing the
-backend, the backend needs to be on the same origin as tower-assist.  This means tower-assist should be configured with
+backend, the backend needs to be on the same origin as tower-staff.  This means tower-staff should be configured with
 a relative path for the backend, and should proxy all requests below that path to the backend.
 
 Deploying the backend in this mode will look something like this:
@@ -44,8 +44,8 @@ should be authorized and `401 UNAUTHORIZED` if the user should not be authorized
 
 ##### Cross-Origin
 
-In cross-origin mode, tower-assist can be accessed without authentication and the user will only be prompted for
-credentials when tower-assist establishes a connection to the backend.  This allows operating the backend without a
+In cross-origin mode, tower-staff can be accessed without authentication and the user will only be prompted for
+credentials when tower-staff establishes a connection to the backend.  This allows operating the backend without a
 reverse proxy in front of it.
 
 Deploying the backend in this mode will look something like this:
@@ -55,16 +55,16 @@ npm run deploy -- \
     -b tower-backend-prod \
     -s tower-backend-prod \
     --stage-name Prod \
-    --auth-url https://tower-assist.valo-dev.de/auth \
-    --allow-origin https://tower-assist.valo-dev.de
+    --auth-url https://auth.tower-assist.de \
+    --allow-origin https://staff.tower-assist.de
 ```
 
 In this command, `tower-backend-prod` is the name of the bucket (`-b`) to build into (and deploy from) and the name 
 of the CloudFormation stack (`-s`). The `--stage-name` is used as the stage name for the AWS SAM API. The actual name 
 doesn't matter much, choose whatever name describes the purpose of that particular deployment. The `--auth-url` 
 should be any url that the backend can GET and that checks the authorization header and answers `200 OK` if the user 
-should be authorized and `401 UNAUTHORIZED` if the user should not be authorized. If tower-assist makes cross-origin 
-requests, `--allow-origin` needs to be set to the origin the client is making the requests from. If tower-assist is 
+should be authorized and `401 UNAUTHORIZED` if the user should not be authorized. If tower-staff makes cross-origin 
+requests, `--allow-origin` needs to be set to the origin the client is making the requests from. If tower-staff is 
 configured to use a reverse proxy, this option can be left out.
 
 #### Updating an Existing Deployment
@@ -114,8 +114,8 @@ endpoint answers `200 OK`, the user will be authorized and the authorization wil
 #### `--allow-origin`
 
 Value for the Access-Control-Allow-Origin CORS-header, optional.  This is the content for the HTTP-header
-Access-Control-Allow-Origin, it is used verbatim.  If you want to make cross-origin requests from tower-assist, this
-needs to be the origin the tower-assist application is making the requests from.
+Access-Control-Allow-Origin, it is used verbatim.  If you want to make cross-origin requests from tower-staff, this
+needs to be the origin the tower-staff application is making the requests from.
 
 #### `-l, --disable-printing-logs`
 
