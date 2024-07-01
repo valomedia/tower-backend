@@ -112,6 +112,7 @@ function spawnOrFail(command, args, options = null, printOutput = true) {
     };
     const cmd = spawnSync(command, args, options);
     if (cmd.error) {
+        // noinspection JSUnresolvedReference
         console.log(`Command ${command} failed with ${cmd.error.code}`);
         process.exit(255);
     }
