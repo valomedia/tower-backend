@@ -34,7 +34,18 @@ export const index: Handler = async () => {
     return response(200, 'application/json', JSON.stringify({ message: 'Success' }));
 }
 
-exports.start = async (event: any) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Start a new assistance session.
+ *
+ * This will create a meeting for the user that made the request and add it to the queue to be picked up by an
+ * assistant.
+ *
+ * @param event The event object containing the requestContext, used to associate the new meeting with a user account.
+ *
+ * @return A 200-response with the information necessary to join the new meeting.
+ */
+export const start: Handler = async (event) => {
     const name = event.requestContext.authorizer.principalId;
 
     console.info(`Creating new meeting for user ${name} in region ${currentRegion}`);
@@ -42,11 +53,11 @@ exports.start = async (event: any) => {
     const meetingResponse = await createMeeting(name, currentRegion);
 
     // Add the meeting to the queue for an assistant to join.
-    await enqueueMeeting(name, meetingResponse.Meeting);
+    await enqueueMeeting(name, meetingResponse.Meeting!);
 
     // Create a new attendee for the meeting
     console.info(`Adding attendee ${name}`);
-    const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
+    const attendeeResponse = await createAttendee(meetingResponse.Meeting!, name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let startResponse = {
