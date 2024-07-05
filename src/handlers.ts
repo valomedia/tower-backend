@@ -108,7 +108,17 @@ export const join: Handler = async (event) => {
     return response(200, 'application/json', JSON.stringify(joinResponse, null, 2));
 };
 
-exports.end = async (event: any) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * End a given meeting.
+ *
+ * This will end the meeting specified by the meetingId query string parameter, hanging up all connections.
+ *
+ * @param event The event object containing the query string parameters.
+ *
+ * @return A 200-response if the meeting was ended, or a 400 response if no meeting id was specified.
+ */
+export const end: Handler = async (event) => {
     const query = event.queryStringParameters;
     if (!query || !query.meetingId) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: meetingId' }));
