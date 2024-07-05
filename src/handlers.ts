@@ -171,7 +171,18 @@ export const poll: Handler = async () => {
     return response('Meeting' in meetingResponse ? 200 : 404, 'application/json', JSON.stringify(meetingResponse, null, 2));
 }
 
-exports.auth = function(event: any, _: any, callback: any) {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Authorize the request based on basic authentication.
+ *
+ * This will throw a request's authorization token against the auth url, authorizing the request, if the response has a
+ * HTTP status code of 200.
+ *
+ * @param event     The event object containing the authorization token from the request.
+ * @param _
+ * @param callback  A callback, that will either be invoked with an error string, or with null and an AuthResponse.
+ */
+export const auth: Handler = function(event, _, callback) {
     const token = event.authorizationToken;
     const principalId = Buffer.from(token.split(' ')[1], 'base64').toString('utf-8').split(':')[0];
 
@@ -342,23 +353,20 @@ async function createAttendee(meeting: Meeting, name: string) {
  *
  * This is used by the lambda token authorizer to authorize the user.
  */
-function generatePolicy(principalId: any, effect: any) {
-    let authResponse: any = {};
-
-    authResponse.principalId = principalId
-    if (effect) {
-        var policyDocument: any = {};
-        policyDocument.Version = '2012-10-17';
-        policyDocument.Statement = [];
-
-        var statementOne: any = {};
-        statementOne.Action = 'execute-api:Invoke';
-        statementOne.Effect = effect;
-        statementOne.Resource = '*';
-
-        policyDocument.Statement[0] = statementOne;
-        authResponse.policyDocument = policyDocument;
-    }
+function generatePolicy(principalId: string, effect: StatementEffect): AuthResponse {
+    const authResponse = {
+        principalId,
+        policyDocument: {
+            Version: '2012-10-17',
+            Statement: [
+                {
+                    Action: 'execute-api:Invoke',
+                    Effect: effect,
+                    Resource: '*'
+                }
+            ]
+        }
+    };
 
     console.log('Generated policy: ' + JSON.stringify(authResponse));
     return authResponse;
