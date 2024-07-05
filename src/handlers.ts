@@ -9,6 +9,8 @@
 import AWS from 'aws-sdk';
 import { v4 as uuidv4 } from 'uuid';
 import https from 'https';
+import { AuthResponse, Handler, StatementEffect } from 'aws-lambda';
+import { GetMeetingResponse, Meeting } from 'aws-sdk/clients/chime';
 
 // Meetings with users waiting for an assistant to join.
 const ddb = new AWS.DynamoDB();
