@@ -143,7 +143,7 @@ if (!fs.existsSync('build')) {
 
 console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, stage ${stage}, authUrl ${authUrl}`);
 ensureBucket();
-spawnOrFail('npm', ['install'], {cwd: path.join(__dirname, 'src')});
+spawnOrFail('npm', ['install'], {cwd: path.join(process.cwd(), 'src')});
 spawnOrFail(
     'sam',
     ['package', '--s3-bucket', bucket, '--output-template-file', 'build/packaged.yaml', '--region', region]
