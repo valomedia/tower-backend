@@ -15,6 +15,7 @@ let region = 'eu-central-1';
 let bucket = '';
 let stack = '';
 let stage = 'Prod';
+let buildEnv = 'production';
 let authUrl = '';
 let allowOrigin = '';
 let disablePrintingLogs = false;
@@ -27,6 +28,9 @@ function usage() {
     console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
     console.log(`  -s, --stack-name             CloudFormation stack name, required`);
     console.log(`  --stage-name                 SAM stage name, default '${stage}'`);
+    console.log(`  --environment                The type of environment to build for,`);
+    console.log(`                               one of 'development', 'production', or 'test',`);
+    console.log(`                               default '${buildEnv}'`);
     console.log(`  --auth-url                   Endpoint to check basic auth tokens against, required`);
     console.log(`  --allow-origin               Value for the Access-Control-Allow-Origin CORS-header, optional`);
     console.log(`  -l, --disable-printing-logs  Disable printing logs`);
@@ -80,6 +84,9 @@ function parseArgs() {
             case '--stage-name':
                 stage = getArgOrExit(++i, args);
                 break;
+            case '--environment':
+                buildEnv = getArgOrExit(++i, args);
+                break;
             case '-l':
             case '--disable-printing-logs':
                 disablePrintingLogs = true;
@@ -103,6 +110,8 @@ function parseArgs() {
         usage();
         process.exit(1);
     }
+
+    process.env.NODE_ENV = buildEnv;
 }
 
 function spawnOrFail(command, args, options = null, printOutput = true) {
