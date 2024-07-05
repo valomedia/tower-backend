@@ -130,7 +130,19 @@ export const end: Handler = async (event) => {
     return response(200, 'application/json', JSON.stringify({}));
 }
 
-exports.deleteAttendee = async (event: any) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Remove a given attendee from a given meeting.
+ *
+ * This will hang up the connection of the attendee specified by the attendeeId query string parameter, in the meeting
+ * specified by the meetingId query string parameter. We currently don't store users, so the client needs to provide the
+ * Chime attendee ID directly (since we have no easy way of finding an attendee from the external user ID).
+ *
+ * @param event The event object containing the query string parameters.
+ *
+ * @return A 200-response with an empty object on success, a 400-response if a parameter is missing.
+ */
+export const deleteAttendee: Handler = async (event) => {
     const query = event.queryStringParameters;
     if (!query || !query.attendeeId || !query.meetingId) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: attendeeId, meetingId' }));
@@ -138,8 +150,13 @@ exports.deleteAttendee = async (event: any) => {
 
     const attendeeId = query.attendeeId;
     const meetingId = query.meetingId;
+    const request = {
+        MeetingId: meetingId,
+        AttendeeId: attendeeId
+    }
+    console.debug('Deleting attendee: ' + JSON.stringify(request));
 
-    await deleteAttendee(attendeeId, meetingId);
+    await chimeSDKMeetings.deleteAttendee(request).promise();
     return response(200, 'application/json', JSON.stringify({}));
 }
 
@@ -312,21 +329,6 @@ async function createAttendee(meeting: any, name: any) {
     console.debug('Created attendee: ' + JSON.stringify(attendeeResponse));
 
     return attendeeResponse;
-}
-
-/*
- * Delete an attendee with a given ID from a given meeting.
- *
- * Delete the attendee.  We currently don't store users, so the client needs to provide the Chime attendee ID directly
- * (since we have no easy way of finding an attendee from the external user ID).
- */
-async function deleteAttendee(attendeeId: any, meetingId: any) {
-    const request = {
-        MeetingId: meetingId,
-        AttendeeId: attendeeId
-    }
-    console.debug('Deleting attendee: ' + JSON.stringify(request));
-    await chimeSDKMeetings.deleteAttendee(request).promise();
 }
 
 /*
