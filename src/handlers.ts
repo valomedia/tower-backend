@@ -209,10 +209,10 @@ export const auth: Handler = function(event, _, callback) {
  * Helpers
  */
 
-/*
+/**
  * Get a meeting from the queue
  *
- * This will return the oldest meeting in the queue, or an empty object, if the queue is empty.
+ * @return The oldest meeting in the queue, or an empty object, if the queue is empty.
  */
 async function getMeeting(): Promise<GetMeetingResponse|{}> {
     console.debug('Finding oldest meeting in queue.');
@@ -246,8 +246,11 @@ async function getMeeting(): Promise<GetMeetingResponse|{}> {
     return meetingResponse;
 }
 
-/*
+/**
  * Store a meeting in the database of meetings waiting for an assistant.
+ *
+ * @param title     The title under which to file the meeting.
+ * @param meeting   The meeting to store.
  */
 async function enqueueMeeting(title: string, meeting: Meeting) {
     await ddb.putItem({
@@ -264,8 +267,10 @@ async function enqueueMeeting(title: string, meeting: Meeting) {
     }).promise();
 }
 
-/*
+/**
  * Remove a meeting from the database of meetings waiting for an assistant.
+ *
+ * @param title The title of the meeting to dequeue.
  */
 async function dequeueMeeting(title: string) {
     await ddb.deleteItem({
@@ -276,8 +281,13 @@ async function dequeueMeeting(title: string) {
     }).promise();
 }
 
-/*
+/**
  * Create a meeting and store it in the database.
+ *
+ * @param title     The title of the meeting, the first 64 characters of which get used as the external meeting id.
+ * @param region    The physical data center region where the meeting is hosted.
+ *
+ * @return The new meeting.
  */
 async function createMeeting(title: string, region: string){
     let request = {
@@ -300,18 +310,23 @@ async function createMeeting(title: string, region: string){
     return meetingResponse;
 }
 
-/*
- * End a given meeting.
+/**
+ * End a given meeting, all attendee connections will hang up.
  *
- * All attendee connections will hang up.
+ * @param meetingId The chime meeting id (not the title) of the meeting to end.
  */
 async function endMeeting(meetingId: string) {
     console.debug(`Ending meeting: ${meetingId}`);
     await chimeSDKMeetings.deleteMeeting({ MeetingId: meetingId }).promise();
 }
 
-/*
+/**
  * Create an attendee with a given name for a given meeting.
+ *
+ * @param meeting   The meeting to add an attendee to.
+ * @param name      The name of the new attendee (not currently used for anything).
+ *
+ * @return The CreateAttendeeResponse for the new attendee.
  */
 async function createAttendee(meeting: Meeting, name: string) {
     const request = {
@@ -330,10 +345,15 @@ async function createAttendee(meeting: Meeting, name: string) {
     return attendeeResponse;
 }
 
-/*
+/**
  * Helper function to generate an IAM policy.
  *
  * This is used by the lambda token authorizer to authorize the user.
+ *
+ * @param principalId   The string used in the principalId field of the AuthResponse.
+ * @param effect        The StatementEffect to me effected by the new PolicyDocument.
+ *
+ * @returns An AuthResponse with a single statement that applies the desired effect to any execute-api:Invoke-Action.
  */
 function generatePolicy(principalId: string, effect: StatementEffect): AuthResponse {
     const authResponse = {
