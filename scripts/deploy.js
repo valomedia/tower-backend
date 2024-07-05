@@ -14,7 +14,7 @@ const path = require('path');
 let region = 'eu-central-1';
 let bucket = '';
 let stack = '';
-let stage = '';
+let stage = 'Prod';
 let authUrl = '';
 let allowOrigin = '';
 let disablePrintingLogs = false;
@@ -26,7 +26,7 @@ function usage() {
     console.log(`  -r, --region                 Target region, default '${region}'`);
     console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
     console.log(`  -s, --stack-name             CloudFormation stack name, required`);
-    console.log(`  --stage-name                 SAM stage name, required`);
+    console.log(`  --stage-name                 SAM stage name, default '${stage}'`);
     console.log(`  --auth-url                   Endpoint to check basic auth tokens against, required`);
     console.log(`  --allow-origin               Value for the Access-Control-Allow-Origin CORS-header, optional`);
     console.log(`  -l, --disable-printing-logs  Disable printing logs`);
@@ -98,7 +98,7 @@ function parseArgs() {
         ++i;
     }
 
-    if (!stack.trim() || !bucket.trim() || !stage.trim() || !authUrl.trim()) {
+    if (!stack.trim() || !bucket.trim() || !authUrl.trim()) {
         console.log('Missing required parameters');
         usage();
         process.exit(1);
