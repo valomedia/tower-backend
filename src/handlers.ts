@@ -160,9 +160,15 @@ export const deleteAttendee: Handler = async (event) => {
     return response(200, 'application/json', JSON.stringify({}));
 }
 
-exports.poll = async (_: any) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Poll for users waiting to be assisted.
+ *
+ * @return A 200-response with a GetMeetingResponse, or a 404-response with an empty object.
+ */
+export const poll: Handler = async () => {
     const meetingResponse = await getMeeting();
-    return response(meetingResponse.Meeting ? '200' : '404', 'application/json', JSON.stringify(meetingResponse, null, 2));
+    return response('Meeting' in meetingResponse ? 200 : 404, 'application/json', JSON.stringify(meetingResponse, null, 2));
 }
 
 exports.auth = function(event: any, _: any, callback: any) {
