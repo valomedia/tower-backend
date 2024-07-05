@@ -3,7 +3,7 @@
 //  tower-backend
 //
 //  Created by Jean-Pierre Höhmann on 2023-07-05.
-//
+//  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 
 import AWS from 'aws-sdk';
