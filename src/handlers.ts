@@ -221,7 +221,7 @@ async function getMeetingId(title: any) {
  *
  * This will return the oldest meeting in the queue, or an empty object, if the queue is empty.
  */
-async function getMeeting(): Promise<any> {
+async function getMeeting(): Promise<GetMeetingResponse|{}> {
     console.debug('Finding oldest meeting in queue.');
     const queryOutput = await ddb.query({
         TableName: meetingsTableName,
@@ -256,7 +256,7 @@ async function getMeeting(): Promise<any> {
 /*
  * Store a meeting in the database of meetings waiting for an assistant.
  */
-async function enqueueMeeting(title: any, meeting: any) {
+async function enqueueMeeting(title: string, meeting: Meeting) {
     await ddb.putItem({
         TableName: meetingsTableName,
         Item: {
@@ -274,7 +274,7 @@ async function enqueueMeeting(title: any, meeting: any) {
 /*
  * Remove a meeting from the database of meetings waiting for an assistant.
  */
-async function dequeueMeeting(title: any) {
+async function dequeueMeeting(title: string) {
     await ddb.deleteItem({
         TableName: meetingsTableName,
         Key: {
@@ -286,7 +286,7 @@ async function dequeueMeeting(title: any) {
 /*
  * Create a meeting and store it in the database.
  */
-async function createMeeting(title: any, region: any){
+async function createMeeting(title: string, region: string){
     let request = {
         // Use a UUID for the client request token to ensure that any request retries do not create multiple
         // meetings.
@@ -312,7 +312,7 @@ async function createMeeting(title: any, region: any){
  *
  * All attendee connections will hang up.
  */
-async function endMeeting(meetingId: any) {
+async function endMeeting(meetingId: string) {
     console.debug(`Ending meeting: ${meetingId}`);
     await chimeSDKMeetings.deleteMeeting({ MeetingId: meetingId }).promise();
 }
@@ -320,10 +320,10 @@ async function endMeeting(meetingId: any) {
 /*
  * Create an attendee with a given name for a given meeting.
  */
-async function createAttendee(meeting: any, name: any) {
+async function createAttendee(meeting: Meeting, name: string) {
     const request = {
         // The meeting ID of the created meeting to add the attendee to
-        MeetingId: meeting.MeetingId,
+        MeetingId: meeting.MeetingId!,
 
         // Our external ID for the user. For simplicity, this is just for random hex bytes, followed by the username
         // for now.
@@ -364,7 +364,7 @@ function generatePolicy(principalId: any, effect: any) {
     return authResponse;
 }
 
-function response(statusCode: any, contentType: any, body: any, isBase64Encoded = false) {
+function response(statusCode: number, contentType: string, body: any, isBase64Encoded = false) {
     return {
         statusCode: statusCode,
         headers: {
