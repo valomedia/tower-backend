@@ -210,24 +210,6 @@ export const auth: Handler = function(event, _, callback) {
  */
 
 /*
- * Retrieve a meeting ID from the meeting table using its externalMeetingId.
- *
- * This just looks up the meeting ID in the database. If the meeting has ended, the result might be a stale ID for a
- * meeting that no longer exists. The caller is expected to check whether the meeting actually exists before proceeding
- * to use the meeting ID for anything.
- */
-// noinspection JSUnusedLocalSymbols
-async function getMeetingId(title: any) {
-    const result = await ddb.getItem({
-        TableName: meetingsTableName,
-        Key: {
-            'Title': { S: title }
-        }
-    }).promise();
-    return result.Item ? result.Item.Data.S : null;
-}
-
-/*
  * Get a meeting from the queue
  *
  * This will return the oldest meeting in the queue, or an empty object, if the queue is empty.
