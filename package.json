@@ -3,7 +3,8 @@
   "version": "0.3.0",
   "description": "AWS SAM backend for Tower",
   "scripts": {
-    "deploy": "node scripts/deploy.js"
+    "deploy": "node scripts/deploy.js",
+    "clean": "node scripts/clean.js"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.5.0",
