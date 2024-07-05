@@ -20,7 +20,7 @@ let allowOrigin = '';
 let disablePrintingLogs = false;
 
 function usage() {
-    console.log(`Usage: deploy.js [-r region] [-b bucket] [-s stack] [--auth-url auth-url]`);
+    console.log(`Usage: deploy.js -b bucket -s stack --auth-url auth-url`);
     console.log(`Example: deploy.js -b tower-backend -s tower-backend --auth-url https://auth.tower-assist.de`);
     console.log(`Options:`);
     console.log(`  -r, --region                 Target region, default '${region}'`);
