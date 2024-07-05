@@ -26,7 +26,11 @@ const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
  * Handlers
  */
 
-exports.index = async () => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Return a success response.
+ */
+export const index: Handler = async () => {
     return response(200, 'application/json', JSON.stringify({ message: 'Success' }));
 }
 
