@@ -69,20 +69,30 @@ export const start: Handler = async (event) => {
     return response(200, 'application/json', JSON.stringify(startResponse, null, 2));
 }
 
-exports.join = async (event: any) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Join a call as an assistant.
+ *
+ * This will pop the first meeting from the queue and add the assistant that made the request to that meeting.
+ *
+ * @param event The event object containing the requestContext, used to associate the meeting with a user account.
+ *
+ * @return A 200-response with the information necessary to join the meeting, or a 404-response, if the queue is empty.
+ */
+export const join: Handler = async (event) => {
     const name = event.requestContext.authorizer.principalId;
 
     console.info(`Connecting assistant ${name} to a user`);
 
     const meetingResponse = await getMeeting();
 
-    if (!meetingResponse.Meeting) {
+    if (!('Meeting' in meetingResponse && typeof meetingResponse.Meeting === "object")) {
         console.info(`There is no meeting in the queue (presumably another assistant was faster to pick up).`);
         return response(404, 'application/json', JSON.stringify({ error: 'No meeting found' }));
     }
 
     // Remove the meeting from the queue, now that an assistant has joined.
-    await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId);
+    await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId!);
 
     // Create a new attendee for the meeting
     console.info(`Adding assistant ${name} to meeting for ${meetingResponse.Meeting.ExternalMeetingId}.`);
