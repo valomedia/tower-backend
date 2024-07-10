@@ -4,29 +4,29 @@
 //  tower-backend
 //
 //  Created by Jean-Pierre Höhmann on 2023-04-17.
-//
+//  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 
 const { spawnSync } = require('child_process');
-const fs = require('fs-extra');
-const path = require('path');
+
+const { spawnOrFail } = require('./lib');
 
 let region = 'eu-central-1';
 let bucket = '';
 let stack = '';
-let stage = '';
+let stage = 'Prod';
 let authUrl = '';
 let allowOrigin = '';
 let disablePrintingLogs = false;
 
 function usage() {
-    console.log(`Usage: deploy.js [-r region] [-b bucket] [-s stack] [--auth-url auth-url]`);
+    console.log(`Usage: deploy.js -b bucket -s stack --auth-url auth-url`);
     console.log(`Example: deploy.js -b tower-backend -s tower-backend --auth-url https://auth.tower-assist.de`);
     console.log(`Options:`);
     console.log(`  -r, --region                 Target region, default '${region}'`);
     console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
     console.log(`  -s, --stack-name             CloudFormation stack name, required`);
-    console.log(`  --stage-name                 SAM stage name, required`);
+    console.log(`  --stage-name                 SAM stage name, default '${stage}'`);
     console.log(`  --auth-url                   Endpoint to check basic auth tokens against, required`);
     console.log(`  --allow-origin               Value for the Access-Control-Allow-Origin CORS-header, optional`);
     console.log(`  -l, --disable-printing-logs  Disable printing logs`);
@@ -98,57 +98,34 @@ function parseArgs() {
         ++i;
     }
 
-    if (!stack.trim() || !bucket.trim() || !stage.trim() || !authUrl.trim()) {
+    if (!stack.trim() || !bucket.trim() || !authUrl.trim()) {
         console.log('Missing required parameters');
         usage();
         process.exit(1);
     }
 }
 
-function spawnOrFail(command, args, options = null, printOutput = true) {
-    options = {
-        ...options,
-        shell: true
-    };
-    const cmd = spawnSync(command, args, options);
-    if (cmd.error) {
-        console.log(`Command ${command} failed with ${cmd.error.code}`);
-        process.exit(255);
-    }
-    const output = cmd.stdout.toString();
-    if (printOutput) {
-        console.log(output);
-    }
-    if (cmd.status !== 0) {
-        console.log(`Command ${command} failed with exit code ${cmd.status} signal ${cmd.signal}`);
-        console.log(cmd.stderr.toString());
-        process.exit(cmd.status);
-    }
-    return output;
-}
-
 function ensureTools() {
-    spawnOrFail('aws', ['--version']);
-    spawnOrFail('sam', ['--version']);
-    spawnOrFail('npm', ['install']);
+    spawnOrFail('aws', ['--version'], {}, false);
+    spawnOrFail('sam', ['--version'], {}, false);
+    spawnOrFail('npm', ['install'], {}, false);
 }
 
 parseArgs();
 ensureTools();
 
-if (!fs.existsSync('build')) {
-    fs.mkdirSync('build');
-}
-
-console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, stage ${stage}, authUrl ${authUrl}`);
-ensureBucket();
-spawnOrFail('npm', ['install'], {cwd: path.join(__dirname, 'src')});
-spawnOrFail(
-    'sam',
-    ['package', '--s3-bucket', bucket, '--output-template-file', 'build/packaged.yaml', '--region', region]
-);
+console.log(`Starting build process`)
+spawnOrFail('npm', ['run', 'build'], {}, !disablePrintingLogs);
 
 console.log('Deploying serverless application');
+console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, stage ${stage}, authUrl ${authUrl}`);
+ensureBucket();
+spawnOrFail(
+    'sam',
+    ['package', '--s3-bucket', bucket, '--output-template-file', 'build/packaged.yaml', '--region', region],
+    {},
+    false
+);
 let parameterOverrides
     = `Region=${region} StageName=${stage} AuthUrl=${authUrl} ${allowOrigin && "AllowOrigin=" + allowOrigin}`;
 spawnOrFail(

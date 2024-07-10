@@ -1,22 +1,24 @@
 //
-//  handlers.js
+//  handlers.ts
 //  tower-backend
 //
-//  Created by Jean-Pierre Höhmann on 2023-04-17.
-//
+//  Created by Jean-Pierre Höhmann on 2023-07-05.
+//  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 
-const AWS = require('aws-sdk');
-const { v4: uuidv4 } = require('uuid');
-const https = require('https');
+import AWS from 'aws-sdk';
+import { v4 as uuidv4 } from 'uuid';
+import https from 'https';
+import { AuthResponse, Handler, StatementEffect } from 'aws-lambda';
+import { GetMeetingResponse, Meeting } from 'aws-sdk/clients/chime';
 
 // Meetings with users waiting for an assistant to join.
 const ddb = new AWS.DynamoDB();
 
 // Read environment.
-const currentRegion = process.env.REGION;
-const meetingsTableName = process.env.MEETINGS_TABLE_NAME;
-const authUrl = process.env.AUTH_URL;
+const currentRegion = process.env.REGION!;
+const meetingsTableName = process.env.MEETINGS_TABLE_NAME!;
+const authUrl = process.env.AUTH_URL!;
 
 const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
 
@@ -24,11 +26,26 @@ const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
  * Handlers
  */
 
-exports.index = async () => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Return a success response.
+ */
+export const index: Handler = async () => {
     return response(200, 'application/json', JSON.stringify({ message: 'Success' }));
 }
 
-exports.start = async (event) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Start a new assistance session.
+ *
+ * This will create a meeting for the user that made the request and add it to the queue to be picked up by an
+ * assistant.
+ *
+ * @param event The event object containing the requestContext, used to associate the new meeting with a user account.
+ *
+ * @return A 200-response with the information necessary to join the new meeting.
+ */
+export const start: Handler = async (event) => {
     const name = event.requestContext.authorizer.principalId;
 
     console.info(`Creating new meeting for user ${name} in region ${currentRegion}`);
@@ -36,11 +53,11 @@ exports.start = async (event) => {
     const meetingResponse = await createMeeting(name, currentRegion);
 
     // Add the meeting to the queue for an assistant to join.
-    await enqueueMeeting(name, meetingResponse.Meeting);
+    await enqueueMeeting(name, meetingResponse.Meeting!);
 
     // Create a new attendee for the meeting
     console.info(`Adding attendee ${name}`);
-    const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
+    const attendeeResponse = await createAttendee(meetingResponse.Meeting!, name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let startResponse = {
@@ -52,20 +69,30 @@ exports.start = async (event) => {
     return response(200, 'application/json', JSON.stringify(startResponse, null, 2));
 }
 
-exports.join = async (event) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Join a call as an assistant.
+ *
+ * This will pop the first meeting from the queue and add the assistant that made the request to that meeting.
+ *
+ * @param event The event object containing the requestContext, used to associate the meeting with a user account.
+ *
+ * @return A 200-response with the information necessary to join the meeting, or a 404-response, if the queue is empty.
+ */
+export const join: Handler = async (event) => {
     const name = event.requestContext.authorizer.principalId;
 
     console.info(`Connecting assistant ${name} to a user`);
 
     const meetingResponse = await getMeeting();
 
-    if (!meetingResponse.Meeting) {
+    if (!('Meeting' in meetingResponse && typeof meetingResponse.Meeting === "object")) {
         console.info(`There is no meeting in the queue (presumably another assistant was faster to pick up).`);
         return response(404, 'application/json', JSON.stringify({ error: 'No meeting found' }));
     }
 
     // Remove the meeting from the queue, now that an assistant has joined.
-    await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId);
+    await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId!);
 
     // Create a new attendee for the meeting
     console.info(`Adding assistant ${name} to meeting for ${meetingResponse.Meeting.ExternalMeetingId}.`);
@@ -81,7 +108,17 @@ exports.join = async (event) => {
     return response(200, 'application/json', JSON.stringify(joinResponse, null, 2));
 };
 
-exports.end = async (event) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * End a given meeting.
+ *
+ * This will end the meeting specified by the meetingId query string parameter, hanging up all connections.
+ *
+ * @param event The event object containing the query string parameters.
+ *
+ * @return A 200-response if the meeting was ended, or a 400 response if no meeting id was specified.
+ */
+export const end: Handler = async (event) => {
     const query = event.queryStringParameters;
     if (!query || !query.meetingId) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: meetingId' }));
@@ -93,7 +130,19 @@ exports.end = async (event) => {
     return response(200, 'application/json', JSON.stringify({}));
 }
 
-exports.deleteAttendee = async (event) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Remove a given attendee from a given meeting.
+ *
+ * This will hang up the connection of the attendee specified by the attendeeId query string parameter, in the meeting
+ * specified by the meetingId query string parameter. We currently don't store users, so the client needs to provide the
+ * Chime attendee ID directly (since we have no easy way of finding an attendee from the external user ID).
+ *
+ * @param event The event object containing the query string parameters.
+ *
+ * @return A 200-response with an empty object on success, a 400-response if a parameter is missing.
+ */
+export const deleteAttendee: Handler = async (event) => {
     const query = event.queryStringParameters;
     if (!query || !query.attendeeId || !query.meetingId) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameters: attendeeId, meetingId' }));
@@ -101,17 +150,39 @@ exports.deleteAttendee = async (event) => {
 
     const attendeeId = query.attendeeId;
     const meetingId = query.meetingId;
+    const request = {
+        MeetingId: meetingId,
+        AttendeeId: attendeeId
+    }
+    console.debug('Deleting attendee: ' + JSON.stringify(request));
 
-    await deleteAttendee(attendeeId, meetingId);
+    await chimeSDKMeetings.deleteAttendee(request).promise();
     return response(200, 'application/json', JSON.stringify({}));
 }
 
-exports.poll = async (_) => {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Poll for users waiting to be assisted.
+ *
+ * @return A 200-response with a GetMeetingResponse, or a 404-response with an empty object.
+ */
+export const poll: Handler = async () => {
     const meetingResponse = await getMeeting();
-    return response(meetingResponse.Meeting ? '200' : '404', 'application/json', JSON.stringify(meetingResponse, null, 2));
+    return response('Meeting' in meetingResponse ? 200 : 404, 'application/json', JSON.stringify(meetingResponse, null, 2));
 }
 
-exports.auth = function(event, _, callback) {
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Authorize the request based on basic authentication.
+ *
+ * This will throw a request's authorization token against the auth url, authorizing the request, if the response has a
+ * HTTP status code of 200.
+ *
+ * @param event     The event object containing the authorization token from the request.
+ * @param _
+ * @param callback  A callback, that will either be invoked with an error string, or with null and an AuthResponse.
+ */
+export const auth: Handler = function(event, _, callback) {
     const token = event.authorizationToken;
     const principalId = Buffer.from(token.split(' ')[1], 'base64').toString('utf-8').split(':')[0];
 
@@ -138,30 +209,12 @@ exports.auth = function(event, _, callback) {
  * Helpers
  */
 
-/*
- * Retrieve a meeting ID from the meeting table using its externalMeetingId.
- *
- * This just looks up the meeting ID in the database. If the meeting has ended, the result might be a stale ID for a
- * meeting that no longer exists. The caller is expected to check whether the meeting actually exists before proceeding
- * to use the meeting ID for anything.
- */
-// noinspection JSUnusedLocalSymbols
-async function getMeetingId(title) {
-    const result = await ddb.getItem({
-        TableName: meetingsTableName,
-        Key: {
-            'Title': { S: title }
-        }
-    }).promise();
-    return result.Item ? result.Item.Data.S : null;
-}
-
-/*
+/**
  * Get a meeting from the queue
  *
- * This will return the oldest meeting in the queue, or an empty object, if the queue is empty.
+ * @return The oldest meeting in the queue, or an empty object, if the queue is empty.
  */
-async function getMeeting() {
+async function getMeeting(): Promise<GetMeetingResponse|{}> {
     console.debug('Finding oldest meeting in queue.');
     const queryOutput = await ddb.query({
         TableName: meetingsTableName,
@@ -175,9 +228,9 @@ async function getMeeting() {
         },
         Limit: 1
     }).promise();
-    if (!queryOutput.Items.length) { return {}; }
-    const meetingId = queryOutput.Items[0].Data.S;
-    const meetingTitle = queryOutput.Items[0].Title.S;
+    if (!queryOutput.Items!.length) { return {}; }
+    const meetingId = queryOutput.Items![0].Data.S!;
+    const meetingTitle = queryOutput.Items![0].Title.S!;
 
     console.debug(`User ${meetingTitle} is first in line.`);
     const meetingResponse = await chimeSDKMeetings
@@ -193,10 +246,13 @@ async function getMeeting() {
     return meetingResponse;
 }
 
-/*
+/**
  * Store a meeting in the database of meetings waiting for an assistant.
+ *
+ * @param title     The title under which to file the meeting.
+ * @param meeting   The meeting to store.
  */
-async function enqueueMeeting(title, meeting) {
+async function enqueueMeeting(title: string, meeting: Meeting) {
     await ddb.putItem({
         TableName: meetingsTableName,
         Item: {
@@ -211,10 +267,12 @@ async function enqueueMeeting(title, meeting) {
     }).promise();
 }
 
-/*
+/**
  * Remove a meeting from the database of meetings waiting for an assistant.
+ *
+ * @param title The title of the meeting to dequeue.
  */
-async function dequeueMeeting(title) {
+async function dequeueMeeting(title: string) {
     await ddb.deleteItem({
         TableName: meetingsTableName,
         Key: {
@@ -223,10 +281,15 @@ async function dequeueMeeting(title) {
     }).promise();
 }
 
-/*
+/**
  * Create a meeting and store it in the database.
+ *
+ * @param title     The title of the meeting, the first 64 characters of which get used as the external meeting id.
+ * @param region    The physical data center region where the meeting is hosted.
+ *
+ * @return The new meeting.
  */
-async function createMeeting(title, region){
+async function createMeeting(title: string, region: string){
     let request = {
         // Use a UUID for the client request token to ensure that any request retries do not create multiple
         // meetings.
@@ -247,23 +310,28 @@ async function createMeeting(title, region){
     return meetingResponse;
 }
 
-/*
- * End a given meeting.
+/**
+ * End a given meeting, all attendee connections will hang up.
  *
- * All attendee connections will hang up.
+ * @param meetingId The chime meeting id (not the title) of the meeting to end.
  */
-async function endMeeting(meetingId) {
+async function endMeeting(meetingId: string) {
     console.debug(`Ending meeting: ${meetingId}`);
     await chimeSDKMeetings.deleteMeeting({ MeetingId: meetingId }).promise();
 }
 
-/*
+/**
  * Create an attendee with a given name for a given meeting.
+ *
+ * @param meeting   The meeting to add an attendee to.
+ * @param name      The name of the new attendee (not currently used for anything).
+ *
+ * @return The CreateAttendeeResponse for the new attendee.
  */
-async function createAttendee(meeting, name) {
+async function createAttendee(meeting: Meeting, name: string) {
     const request = {
         // The meeting ID of the created meeting to add the attendee to
-        MeetingId: meeting.MeetingId,
+        MeetingId: meeting.MeetingId!,
 
         // Our external ID for the user. For simplicity, this is just for random hex bytes, followed by the username
         // for now.
@@ -277,49 +345,36 @@ async function createAttendee(meeting, name) {
     return attendeeResponse;
 }
 
-/*
- * Delete an attendee with a given ID from a given meeting.
- *
- * Delete the attendee.  We currently don't store users, so the client needs to provide the Chime attendee ID directly
- * (since we have no easy way of finding an attendee from the external user ID).
- */
-async function deleteAttendee(attendeeId, meetingId) {
-    const request = {
-        MeetingId: meetingId,
-        AttendeeId: attendeeId
-    }
-    console.debug('Deleting attendee: ' + JSON.stringify(request));
-    await chimeSDKMeetings.deleteAttendee(request).promise();
-}
-
-/*
+/**
  * Helper function to generate an IAM policy.
  *
  * This is used by the lambda token authorizer to authorize the user.
+ *
+ * @param principalId   The string used in the principalId field of the AuthResponse.
+ * @param effect        The StatementEffect to me effected by the new PolicyDocument.
+ *
+ * @returns An AuthResponse with a single statement that applies the desired effect to any execute-api:Invoke-Action.
  */
-function generatePolicy(principalId, effect) {
-    let authResponse = {};
-
-    authResponse.principalId = principalId
-    if (effect) {
-        var policyDocument = {};
-        policyDocument.Version = '2012-10-17';
-        policyDocument.Statement = [];
-
-        var statementOne = {};
-        statementOne.Action = 'execute-api:Invoke';
-        statementOne.Effect = effect;
-        statementOne.Resource = '*';
-
-        policyDocument.Statement[0] = statementOne;
-        authResponse.policyDocument = policyDocument;
-    }
+function generatePolicy(principalId: string, effect: StatementEffect): AuthResponse {
+    const authResponse = {
+        principalId,
+        policyDocument: {
+            Version: '2012-10-17',
+            Statement: [
+                {
+                    Action: 'execute-api:Invoke',
+                    Effect: effect,
+                    Resource: '*'
+                }
+            ]
+        }
+    };
 
     console.log('Generated policy: ' + JSON.stringify(authResponse));
     return authResponse;
 }
 
-function response(statusCode, contentType, body, isBase64Encoded = false) {
+function response(statusCode: number, contentType: string, body: any, isBase64Encoded = false) {
     return {
         statusCode: statusCode,
         headers: {

@@ -3,7 +3,7 @@
 # tower-backend
 #
 # Created by Jean-Pierre Höhmann on 2023-04-17.
-#
+# Copyright © 2024 valo.media GmbH. All rights reserved.
 #
 
 #
@@ -23,3 +23,9 @@ node_modules/
 #
 
 /.idea
+
+#
+# Local configuration
+#
+
+.env.local

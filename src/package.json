@@ -5,5 +5,9 @@
   "dependencies": {
     "aws-sdk": "^2.1359.0",
     "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.140",
+    "@types/uuid": "^10.0.0"
   }
 }

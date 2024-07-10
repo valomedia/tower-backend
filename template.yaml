@@ -120,7 +120,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.index
-      CodeUri: src/
+      CodeUri: build/
       Events:
         Api1:
           Type: Api
@@ -132,7 +132,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.start
-      CodeUri: src/
+      CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
@@ -147,7 +147,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.join
-      CodeUri: src/
+      CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
@@ -162,7 +162,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.deleteAttendee
-      CodeUri: src/
+      CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
@@ -177,7 +177,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.end
-      CodeUri: src/
+      CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
@@ -192,7 +192,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.poll
-      CodeUri: src/
+      CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
@@ -206,7 +206,7 @@ Resources:
   BasicAuthLambda:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./src
+      CodeUri: build/
       Handler: handlers.auth
 Outputs:
   ApiURL:
