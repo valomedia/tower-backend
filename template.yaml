@@ -116,6 +116,35 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: "TTL"
         Enabled: true
+  CallRecords:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Caller"
+          AttributeType: "S"
+        - AttributeName: "Assistant"
+          AttributeType: "S"
+        - AttributeName: "StartDateTime"
+          AttributeType: "S"
+        - AttributeName: "AcceptDateTime"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Caller"
+          KeyType: HASH
+        - AttributeName: "StartDateTime"
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: "Assistant"
+          KeySchema:
+            - AttributeName: "Assistant"
+              KeyType: HASH
+            - AttributeName: "AcceptDateTime"
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
   ChimeSdkIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
