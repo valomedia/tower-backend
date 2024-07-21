@@ -59,6 +59,7 @@ Resources:
               WWW-Authenticate: "'Basic'"
           ResponseTemplates:
             "application/json": {"message": "Unauthorized"}
+  # noinspection YAMLSchemaValidation
   ChimeMeetingsAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
