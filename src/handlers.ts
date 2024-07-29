@@ -269,6 +269,21 @@ async function enqueueMeeting(title: string, meeting: Meeting) {
 }
 
 /**
+ * Create a new call record with the username of the caller and the time the call was started.
+ *
+ * @param caller    The username of the caller to log in the call record.
+ */
+async function logNewCall(caller: string) {
+    await ddb.putItem({
+        TableName: callRecordsTableName,
+        Item: {
+            Caller: { S: caller },
+            StartDateTime: { S: (new Date()).toISOString() }
+        }
+    }).promise();
+}
+
+/**
  * Remove a meeting from the database of meetings waiting for an assistant.
  *
  * @param title The title of the meeting to dequeue.
