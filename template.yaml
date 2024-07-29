@@ -27,6 +27,7 @@ Globals:
     Environment:
       Variables:
         MEETINGS_TABLE_NAME: !Ref Meetings
+        CALL_RECORDS_TABLE_NAME: !Ref CallRecords
         REGION: !Ref Region
         AUTH_URL: !Ref AuthUrl
   Api:

@@ -18,6 +18,7 @@ const ddb = new AWS.DynamoDB();
 // Read environment.
 const currentRegion = process.env.REGION!;
 const meetingsTableName = process.env.MEETINGS_TABLE_NAME!;
+const callRecordsTableName = process.env.CALL_RECORDS_TABLE_NAME!;
 const authUrl = process.env.AUTH_URL!;
 
 const chimeSDKMeetings = new AWS.ChimeSDKMeetings({region: currentRegion});
