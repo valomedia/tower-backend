@@ -39,8 +39,8 @@ export const index: Handler = async () => {
 /**
  * Start a new assistance session.
  *
- * This will create a meeting for the user that made the request and add it to the queue to be picked up by an
- * assistant.
+ * This will create a meeting for the user that made the request, add it to the queue to be picked up by an assistant
+ * and create a new call record for the call.
  *
  * @param event The event object containing the requestContext, used to associate the new meeting with a user account.
  *
@@ -50,6 +50,8 @@ export const start: Handler = async (event) => {
     const name = event.requestContext.authorizer.principalId;
 
     console.info(`Creating new meeting for user ${name} in region ${currentRegion}`);
+
+    await logNewCall(name);
 
     const meetingResponse = await createMeeting(name, currentRegion);
 
