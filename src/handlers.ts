@@ -87,24 +87,23 @@ export const join: Handler = async (event) => {
 
     console.info(`Connecting assistant ${name} to a user`);
 
-    const meetingResponse = await getMeeting();
-
-    if (!('Meeting' in meetingResponse && typeof meetingResponse.Meeting === "object")) {
+    const meetingInfo = await getMeeting();
+    if (!meetingInfo || !meetingInfo.meetingResponse.Meeting) {
         console.info(`There is no meeting in the queue (presumably another assistant was faster to pick up).`);
         return response(404, 'application/json', JSON.stringify({ error: 'No meeting found' }));
     }
 
     // Remove the meeting from the queue, now that an assistant has joined.
-    await dequeueMeeting(meetingResponse.Meeting.ExternalMeetingId!);
+    await dequeueMeeting(meetingInfo.meetingResponse.Meeting.ExternalMeetingId!);
 
     // Create a new attendee for the meeting
-    console.info(`Adding assistant ${name} to meeting for ${meetingResponse.Meeting.ExternalMeetingId}.`);
-    const attendeeResponse = await createAttendee(meetingResponse.Meeting, name);
+    console.info(`Adding assistant ${name} to meeting for ${meetingInfo.meetingTitle}.`);
+    const attendeeResponse = await createAttendee(meetingInfo.meetingResponse.Meeting, name);
 
     // Return the meeting and attendee responses. The client will use these to join the meeting.
     let joinResponse = {
         joinInfo: {
-            meetingResponse,
+            meetingResponse: meetingInfo.meetingResponse,
             attendeeResponse
         }
     }
@@ -170,8 +169,8 @@ export const deleteAttendee: Handler = async (event) => {
  * @return A 200-response with a GetMeetingResponse, or a 404-response with an empty object.
  */
 export const poll: Handler = async () => {
-    const meetingResponse = await getMeeting();
-    return response('Meeting' in meetingResponse ? 200 : 404, 'application/json', JSON.stringify(meetingResponse, null, 2));
+    const meetingInfo = await getMeeting();
+    return response(meetingInfo ? 200 : 404, 'application/json', JSON.stringify(meetingInfo?.meetingResponse, null, 2));
 }
 
 // noinspection JSUnusedGlobalSymbols
@@ -215,9 +214,9 @@ export const auth: Handler = function(event, _, callback) {
 /**
  * Get a meeting from the queue
  *
- * @return The oldest meeting in the queue, or an empty object, if the queue is empty.
+ * @return The title and GetMeetingResponse of the oldest queued meeting, if there is a meeting in the queue.
  */
-async function getMeeting(): Promise<GetMeetingResponse|{}> {
+async function getMeeting(): Promise<{meetingTitle: string, meetingResponse: GetMeetingResponse}|undefined> {
     console.debug('Finding oldest meeting in queue.');
     const queryOutput = await ddb.query({
         TableName: meetingsTableName,
@@ -231,22 +230,23 @@ async function getMeeting(): Promise<GetMeetingResponse|{}> {
         },
         Limit: 1
     }).promise();
-    if (!queryOutput.Items!.length) { return {}; }
+    if (!queryOutput.Items?.length) { return; }
     const meetingId = queryOutput.Items![0].Data.S!;
     const meetingTitle = queryOutput.Items![0].Title.S!;
-
     console.debug(`User ${meetingTitle} is first in line.`);
-    const meetingResponse = await chimeSDKMeetings
-        .getMeeting({ MeetingId: meetingId })
-        .promise()
-        .catch(async _ => {
-            console.debug('Meeting no longer exists (user hung up while waiting), dequeueing and getting another one.');
-            await dequeueMeeting(meetingTitle);
-            return await getMeeting();
-        });
-    console.debug('Got meeting: ' + JSON.stringify(meetingResponse));
 
-    return meetingResponse;
+    try {
+        const meetingResponse = await chimeSDKMeetings.getMeeting({MeetingId: meetingId}).promise();
+        console.debug('Got meeting: ' + JSON.stringify(meetingResponse));
+        return {
+            meetingTitle,
+            meetingResponse
+        };
+    } catch (_) {
+        console.debug('Meeting no longer exists (user hung up while waiting), dequeueing and getting another one.');
+        await dequeueMeeting(meetingTitle);
+        return await getMeeting();
+    }
 }
 
 /**
