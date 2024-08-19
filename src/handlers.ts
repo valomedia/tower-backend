@@ -93,6 +93,8 @@ export const join: Handler = async (event) => {
         return response(404, 'application/json', JSON.stringify({ error: 'No meeting found' }));
     }
 
+    await logAssistantJoin(meetingInfo.meetingTitle, name);
+
     // Remove the meeting from the queue, now that an assistant has joined.
     await dequeueMeeting(meetingInfo.meetingResponse.Meeting.ExternalMeetingId!);
 
@@ -281,6 +283,37 @@ async function logNewCall(caller: string) {
         Item: {
             Caller: { S: caller },
             StartDateTime: { S: (new Date()).toISOString() }
+        }
+    }).promise();
+}
+
+/**
+ * Update a call record with the username of the assistant that accepted the call and the time the assistant joined.
+ *
+ * @param caller    The username of the caller that was awaiting assistance.
+ * @param assistant The username of the assistant that picked up the call.
+ */
+async function logAssistantJoin(caller: string, assistant: string) {
+    const queryOutput = await ddb.query({
+        TableName: callRecordsTableName,
+        KeyConditionExpression: '#caller = :caller',
+        ExpressionAttributeValues: {
+            ':caller': {S: caller}
+        },
+        ExpressionAttributeNames: {'#caller': "Caller"},
+        Limit: 1,
+        ScanIndexForward: false
+    }).promise();
+    await ddb.updateItem({
+        TableName: callRecordsTableName,
+        Key: {
+            Caller: {S: caller},
+            StartDateTime: {S: queryOutput.Items?.[0].StartDateTime.S ?? (new Date()).toISOString()}
+        },
+        UpdateExpression: "SET Assistant = :assistant, AcceptDateTime = :acceptDateTime",
+        ExpressionAttributeValues: {
+            ":assistant": {S: assistant},
+            ":acceptDateTime": {S: (new Date()).toISOString()}
         }
     }).promise();
 }
