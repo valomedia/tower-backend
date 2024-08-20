@@ -27,6 +27,7 @@ Globals:
     Environment:
       Variables:
         MEETINGS_TABLE_NAME: !Ref Meetings
+        CALL_RECORDS_TABLE_NAME: !Ref CallRecords
         REGION: !Ref Region
         AUTH_URL: !Ref AuthUrl
   Api:
@@ -59,6 +60,7 @@ Resources:
               WWW-Authenticate: "'Basic'"
           ResponseTemplates:
             "application/json": {"message": "Unauthorized"}
+  # noinspection YAMLSchemaValidation
   ChimeMeetingsAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -116,6 +118,43 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: "TTL"
         Enabled: true
+  CallRecords:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Meeting"
+          AttributeType: "S"
+        - AttributeName: "Caller"
+          AttributeType: "S"
+        - AttributeName: "Assistant"
+          AttributeType: "S"
+        - AttributeName: "StartDateTime"
+          AttributeType: "S"
+        - AttributeName: "AcceptDateTime"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Meeting"
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: "Assistant"
+          KeySchema:
+            - AttributeName: "Assistant"
+              KeyType: HASH
+            - AttributeName: "AcceptDateTime"
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: "Caller"
+          KeySchema:
+            - AttributeName: "Caller"
+              KeyType: HASH
+            - AttributeName: "StartDateTime"
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
   ChimeSdkIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
@@ -136,6 +175,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
       Events:
         Api1:
           Type: Api
@@ -151,6 +192,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
       Events:
         Api1:
           Type: Api
@@ -166,6 +209,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
       Events:
         Api1:
           Type: Api
@@ -181,6 +226,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Meetings
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
       Events:
         Api1:
           Type: Api
