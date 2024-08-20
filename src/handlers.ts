@@ -130,9 +130,15 @@ export const end: Handler = async (event) => {
     }
 
     const meetingId = query.meetingId;
+    try {
+        const meetingResponse = await chimeSDKMeetings.getMeeting({MeetingId: meetingId}).promise();
+        await endMeeting(meetingResponse.Meeting!);
+        await logMeetingEnd(meetingResponse.Meeting!);
+        return response(200, 'application/json', JSON.stringify({}));
+    } catch (_) {
+        return response(404, 'application/json', JSON.stringify({}))
+    }
 
-    await endMeeting(meetingId);
-    return response(200, 'application/json', JSON.stringify({}));
 }
 
 // noinspection JSUnusedGlobalSymbols
@@ -311,6 +317,24 @@ async function logAssistantJoin(meeting: Meeting, assistant: string) {
 }
 
 /**
+ * Update a call record with the time the call ended.
+ *
+ * @param meeting   The meeting that is ending, used to find the call record to update.
+ */
+async function logMeetingEnd(meeting: Meeting) {
+    await ddb.updateItem({
+        TableName: callRecordsTableName,
+        Key: {
+            Meeting: {S: meeting.MeetingId}
+        },
+        UpdateExpression: "SET EndDateTime = :endDateTime",
+        ExpressionAttributeValues: {
+            ":endDateTime": {S: (new Date()).toISOString()}
+        }
+    }).promise();
+}
+
+/**
  * Remove a meeting from the database of meetings waiting for an assistant.
  *
  * @param title The title of the meeting to dequeue.
@@ -356,11 +380,11 @@ async function createMeeting(title: string, region: string){
 /**
  * End a given meeting, all attendee connections will hang up.
  *
- * @param meetingId The chime meeting id (not the title) of the meeting to end.
+ * @param meeting   The meeting to end.
  */
-async function endMeeting(meetingId: string) {
-    console.debug(`Ending meeting: ${meetingId}`);
-    await chimeSDKMeetings.deleteMeeting({ MeetingId: meetingId }).promise();
+async function endMeeting(meeting: Meeting) {
+    console.debug(`Ending meeting: ${meeting.MeetingId}`);
+    await chimeSDKMeetings.deleteMeeting({ MeetingId: meeting.MeetingId!}).promise();
 }
 
 /**
