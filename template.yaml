@@ -124,6 +124,8 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       AttributeDefinitions:
+        - AttributeName: "Meeting"
+          AttributeType: "S"
         - AttributeName: "Caller"
           AttributeType: "S"
         - AttributeName: "Assistant"
@@ -134,16 +136,22 @@ Resources:
           AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
-        - AttributeName: "Caller"
+        - AttributeName: "Meeting"
           KeyType: HASH
-        - AttributeName: "StartDateTime"
-          KeyType: RANGE
       GlobalSecondaryIndexes:
         - IndexName: "Assistant"
           KeySchema:
             - AttributeName: "Assistant"
               KeyType: HASH
             - AttributeName: "AcceptDateTime"
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: "Caller"
+          KeySchema:
+            - AttributeName: "Caller"
+              KeyType: HASH
+            - AttributeName: "StartDateTime"
               KeyType: RANGE
           Projection:
             ProjectionType: ALL

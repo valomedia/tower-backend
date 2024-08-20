@@ -51,9 +51,10 @@ export const start: Handler = async (event) => {
 
     console.info(`Creating new meeting for user ${name} in region ${currentRegion}`);
 
-    await logNewCall(name);
 
     const meetingResponse = await createMeeting(name, currentRegion);
+
+    await logNewCall(name, meetingResponse.Meeting!);
 
     // Add the meeting to the queue for an assistant to join.
     await enqueueMeeting(name, meetingResponse.Meeting!);
@@ -93,7 +94,7 @@ export const join: Handler = async (event) => {
         return response(404, 'application/json', JSON.stringify({ error: 'No meeting found' }));
     }
 
-    await logAssistantJoin(meetingInfo.meetingTitle, name);
+    await logAssistantJoin(meetingInfo.meetingResponse.Meeting, name);
 
     // Remove the meeting from the queue, now that an assistant has joined.
     await dequeueMeeting(meetingInfo.meetingTitle);
@@ -276,13 +277,15 @@ async function enqueueMeeting(title: string, meeting: Meeting) {
  * Create a new call record with the username of the caller and the time the call was started.
  *
  * @param caller    The username of the caller to log in the call record.
+ * @param meeting   The Meeting the user is in, used as an index to allow updating the record during the call lifecycle.
  */
-async function logNewCall(caller: string) {
+async function logNewCall(caller: string, meeting: Meeting) {
     await ddb.putItem({
         TableName: callRecordsTableName,
         Item: {
             Caller: { S: caller },
-            StartDateTime: { S: (new Date()).toISOString() }
+            StartDateTime: { S: (new Date()).toISOString() },
+            Meeting: { S: meeting.MeetingId }
         }
     }).promise();
 }
@@ -290,25 +293,14 @@ async function logNewCall(caller: string) {
 /**
  * Update a call record with the username of the assistant that accepted the call and the time the assistant joined.
  *
- * @param caller    The username of the caller that was awaiting assistance.
+ * @param meeting   The Meeting the assistant is joining, used to find the call record to update.
  * @param assistant The username of the assistant that picked up the call.
  */
-async function logAssistantJoin(caller: string, assistant: string) {
-    const queryOutput = await ddb.query({
-        TableName: callRecordsTableName,
-        KeyConditionExpression: '#caller = :caller',
-        ExpressionAttributeValues: {
-            ':caller': {S: caller}
-        },
-        ExpressionAttributeNames: {'#caller': "Caller"},
-        Limit: 1,
-        ScanIndexForward: false
-    }).promise();
+async function logAssistantJoin(meeting: Meeting, assistant: string) {
     await ddb.updateItem({
         TableName: callRecordsTableName,
         Key: {
-            Caller: {S: caller},
-            StartDateTime: {S: queryOutput.Items?.[0].StartDateTime.S ?? (new Date()).toISOString()}
+            Meeting: {S: meeting.MeetingId}
         },
         UpdateExpression: "SET Assistant = :assistant, AcceptDateTime = :acceptDateTime",
         ExpressionAttributeValues: {
