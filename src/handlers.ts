@@ -96,7 +96,7 @@ export const join: Handler = async (event) => {
     await logAssistantJoin(meetingInfo.meetingTitle, name);
 
     // Remove the meeting from the queue, now that an assistant has joined.
-    await dequeueMeeting(meetingInfo.meetingResponse.Meeting.ExternalMeetingId!);
+    await dequeueMeeting(meetingInfo.meetingTitle);
 
     // Create a new attendee for the meeting
     console.info(`Adding assistant ${name} to meeting for ${meetingInfo.meetingTitle}.`);
