@@ -9,7 +9,13 @@
 import AWS from 'aws-sdk';
 import { v4 as uuidv4 } from 'uuid';
 import https from 'https';
-import { AuthResponse, Handler, StatementEffect } from 'aws-lambda';
+import {
+    APIGatewayAuthorizerResult,
+    APIGatewayTokenAuthorizerEvent,
+    AuthResponse,
+    Handler,
+    StatementEffect
+} from 'aws-lambda';
 import { GetMeetingResponse, Meeting } from 'aws-sdk/clients/chime';
 
 // Meetings with users waiting for an assistant to join.
@@ -190,30 +196,33 @@ export const poll: Handler = async () => {
  * HTTP status code of 200.
  *
  * @param event     The event object containing the authorization token from the request.
- * @param _
- * @param callback  A callback, that will either be invoked with an error string, or with null and an AuthResponse.
  */
-export const auth: Handler = function(event, _, callback) {
+export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
     const token = event.authorizationToken;
     const principalId = Buffer.from(token.split(' ')[1], 'base64').toString('utf-8').split(':')[0];
 
-    https
-        .request(
-            authUrl,
-            {
-                method: 'HEAD',
-                headers: { authorization: token }
-            },
-            (res) => {
-                if (res.statusCode === 200) {
-                    callback(null, generatePolicy(principalId, 'Allow'));
-                } else {
-                    callback('Unauthorized');
+    return new Promise((resolve, reject) =>
+        https
+            .request(
+                authUrl,
+                {
+                    method: 'HEAD',
+                    headers: { authorization: token }
+                },
+                (res) => {
+                    if (res.statusCode === 200) {
+                        resolve(generatePolicy(principalId, 'Allow'));
+                    } else {
+                        reject("Unauthorized");
+                    }
                 }
-            }
-        )
-        .on('error', (_) => callback('Error: Internal Server Error'))
-        .end();
+            )
+            .on('error', (_) => {
+                console.error('Failed to reach authentication server!');
+                reject("Unauthorized");
+            })
+            .end()
+    );
 }
 
 /*
