@@ -17,24 +17,16 @@ const { spawnSync } = require('child_process');
 
 const { spawnOrFail } = require('./lib');
 
-let region = 'eu-central-1';
-let bucket = '';
-let stack = '';
-let stage = 'Prod';
-let authUrl = '';
-let allowOrigin = '';
+let region, bucket, stack, stage, authUrl, allowOrigin;
+
 let disablePrintingLogs = false;
+let env = 'development';
 
 function usage() {
-    console.log(`Usage: deploy.js -b bucket -s stack --auth-url auth-url`);
-    console.log(`Example: deploy.js -b tower-backend -s tower-backend --auth-url https://auth.tower-assist.de`);
+    console.log(`Usage: deploy.js [--env development|production] [-l] [-h]`);
+    console.log(`Example: deploy.js --env development`);
     console.log(`Options:`);
-    console.log(`  -r, --region                 Target region, default '${region}'`);
-    console.log(`  -b, --s3-bucket              S3 bucket for deployment, required`);
-    console.log(`  -s, --stack-name             CloudFormation stack name, required`);
-    console.log(`  --stage-name                 SAM stage name, default '${stage}'`);
-    console.log(`  --auth-url                   Endpoint to check basic auth tokens against, required`);
-    console.log(`  --allow-origin               Value for the Access-Control-Allow-Origin CORS-header, optional`);
+    console.log(`  --env                        Env to deploy, 'development' or 'production', default '${env}'`);
     console.log(`  -l, --disable-printing-logs  Disable printing logs`);
     console.log(`  -h, --help                   Show help and exit`);
 }
@@ -66,35 +58,17 @@ function parseArgs() {
     let i = 0;
     while (i < args.length) {
         switch(args[i]) {
+            case '--env':
+                 env = getArgOrExit(++i, args);
+                 break;
             case '-h':
             case '--help':
                 usage();
                 process.exit(0);
                 break;
-            case '-r':
-            case '--region':
-                region = getArgOrExit(++i, args);
-                break;
-            case '-b':
-            case '--s3-bucket':
-                bucket = getArgOrExit(++i, args);
-                break;
-            case '-s':
-            case '--stack-name':
-                stack = getArgOrExit(++i, args);
-                break;
-            case '--stage-name':
-                stage = getArgOrExit(++i, args);
-                break;
             case '-l':
             case '--disable-printing-logs':
                 disablePrintingLogs = true;
-                break;
-            case '--auth-url':
-                authUrl = getArgOrExit(++i, args);
-                break;
-            case '--allow-origin':
-                allowOrigin = getArgOrExit(++i, args);
                 break;
             default:
                 console.log(`Invalid argument ${args[i]}`);
@@ -104,11 +78,30 @@ function parseArgs() {
         ++i;
     }
 
-    if (!stack.trim() || !bucket.trim() || !authUrl.trim()) {
-        console.log('Missing required parameters');
+    if (env !== 'development' && env !== 'production') {
+        console.log(`Invalid environment ${env}`);
         usage();
         process.exit(1);
     }
+}
+
+function loadEnv() {
+    process.env.NODE_ENV = env;
+    require('../config/env');
+
+    for (let i of ['AWS_REGION', 'AWS_CLOUDFORMATION_STACK', 'AWS_S3_BUCKET', 'AWS_SAM_STAGE_NAME', 'AUTH_URL']) {
+        if (!process.env[i].trim()) {
+            console.log(`Missing required environment variable ${i}`);
+            process.exit(1);
+        }
+    }
+
+    region = process.env.AWS_REGION;
+    bucket = process.env.AWS_S3_BUCKET;
+    stack = process.env.AWS_CLOUDFORMATION_STACK;
+    stage = process.env.AWS_SAM_STAGE_NAME;
+    authUrl = process.env.AUTH_URL;
+    allowOrigin = process.env.ALLOW_ORIGIN;
 }
 
 function ensureTools() {
@@ -118,9 +111,10 @@ function ensureTools() {
 }
 
 parseArgs();
+loadEnv();
 ensureTools();
 
-console.log(`Starting build process`)
+console.log(`\nStarting build process`)
 spawnOrFail('npm', ['run', 'build'], {}, !disablePrintingLogs);
 
 console.log('Deploying serverless application');
@@ -133,7 +127,7 @@ spawnOrFail(
     false
 );
 let parameterOverrides
-    = `Region=${region} StageName=${stage} AuthUrl=${authUrl} ${allowOrigin && "AllowOrigin=" + allowOrigin}`;
+    = `Region=${region} StageName=${stage} AuthUrl=${authUrl} ${allowOrigin ? "AllowOrigin=" + allowOrigin : ''}`;
 spawnOrFail(
     'sam',
     [
