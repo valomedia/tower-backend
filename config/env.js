@@ -19,12 +19,12 @@ if (!NODE_ENV) {
 }
 
 const dotenvFiles = [
+    `${paths.secrets}.${NODE_ENV}`,
+    NODE_ENV !== 'test' && paths.secrets,
     `${paths.dotenv}.${NODE_ENV}.local`,
     NODE_ENV !== 'test' && `${paths.dotenv}.local`,
     `${paths.dotenv}.${NODE_ENV}`,
     paths.dotenv,
-    `${paths.secrets}.${NODE_ENV}`,
-    NODE_ENV !== 'test' && paths.secrets,
 ].filter(Boolean);
 
 dotenvFiles.forEach(dotenvFile => {
