@@ -27,7 +27,7 @@ function usage() {
     console.log(`Example: deploy.js --env development`);
     console.log(`Options:`);
     console.log(`  --env                        Env to deploy, 'development' or 'production', default '${env}'`);
-    console.log(`  -l, --disable-printing-logs  Disable printing logs`);
+    console.log(`  -l, --disable-printing-logs  Make the output less verbose`);
     console.log(`  -h, --help                   Show help and exit`);
 }
 

@@ -2,124 +2,76 @@
 
 AWS SAM backend for Tower.
 
-## Deployment
+## Usage
 
-### Quick Start Guide
+To deploy the service, configure the environment variables and execute the deploy-script.
 
-In order to deploy the backend, or update an existing deployment, you simply execute `npm run deploy` with the correct
-options.
+### Configuration
 
-#### First Deployment
+To configure the service for your environment, copy `.env`, `.env.development` and `.env.production` to `.env.local`, 
+`.env.development.local` and `.env.production.local`, respectively, and update the configuration options as needed. When
+updating an existing deployment, `AWS_REGION`, `AWS_CLOUDFORMATION_STACK` and `AWS_SAM_STAGE_NAME` need to be the same
+as on the original deployment. All other options can be changed at any time.
 
-There is two ways to deploy the backend, depending on how you want to do the authentication for the web app (the mobile
-app is unaffected by this).  Both are deployed using `deploy.js`, just with slightly different parameters.  All AWS
-resources will be created automatically.  When the script finishes it outputs the url to the newly deployed backend,
-which can be used as is, or assigned to a custom domain using the AWS API Gateway Console.  During each deployment, a
-new temporary object will be created in an S3-bucket that is provided on the command line. The bucket is not emptied
-automatically, so you might have to empty it manually every once in a while (or set a deletion rule), to avoid
-unnecessary charges.
+### Building
 
-##### Reverse proxy
+Use `npm run build` to build the project, and `npm run clean` to clean the build folder. This isn't normally needed, as
+the project will be built automatically by the deploy-script.
 
-In reverse proxy mode, tower-staff itself is protected by basic auth.  This means the user will be prompted for
-credentials immediately after opening the web-app.  To avoid having to reenter the credentials when accessing the
-backend, the backend needs to be on the same origin as tower-staff.  This means tower-staff should be configured with
-a relative path for the backend, and should proxy all requests below that path to the backend.
+### Deployment
 
-Deploying the backend in this mode will look something like this:
+Use `npm run deploy` to deploy the development configuration, and `npm run deploy -- --env production` to deploy the
+production configuration (aws-cli needs to be installed and logged in). All AWS resources will be created automatically. 
+When the script finishes, it outputs the url to the newly deployed backend, which can be used as is, or assigned to a
+custom domain using the AWS API Gateway Console.
 
-```shell
-npm run deploy -- \
-    -b tower-backend-prod \
-    -s tower-backend-prod \
-    --stage-name Prod \
-    --auth-url https://auth.tower-assist.de
-```
+During each deployment, a new temporary object will be created in an S3-bucket provided on the command line. The bucket
+is not emptied automatically, so you might have to empty it manually every once in a while (or set a deletion rule), to
+avoid unnecessary charges.
 
-In this command, `tower-backend-prod` is the name of the bucket (`-b`) to build into (and deploy from) and the name 
-of the CloudFormation stack (`-s`). The `--stage-name` is used as the stage name for the AWS SAM API. The actual name 
-doesn't matter much, choose whatever name describes the purpose of that particular deployment. The `--auth-url` 
-should be any url that the backend can GET and that checks the authorization header and answers `200 OK` if the user 
-should be authorized and `401 UNAUTHORIZED` if the user should not be authorized.
+You can pass `-l`, or `--disable-printing-logs` to make the output of the deployment script less verbose.
 
-##### Cross-Origin
+## Configuration Options
 
-In cross-origin mode, tower-staff can be accessed without authentication and the user will only be prompted for
-credentials when tower-staff establishes a connection to the backend.  This allows operating the backend without a
-reverse proxy in front of it.
+Configuration options can be specified through environment variables, or in `.env.local`, `.env.local.development`,
+`.env.local.production`, `.secrets`, `.secrets.development` and `.secrets.production`. Environment variables take
+precedence over all configuration files, secrets take precedence over all env files, and environment-specific files 
+take precedence over files that apply to both environments. The default values for the various configuration options can
+also be found in `.env`, `.env.development` and `.env.production`.
 
-Deploying the backend in this mode will look something like this:
+### `AWS_REGION`
 
-```shell
-npm run deploy -- \
-    -b tower-backend-prod \
-    -s tower-backend-prod \
-    --stage-name Prod \
-    --auth-url https://auth.tower-assist.de \
-    --allow-origin https://staff.tower-assist.de
-```
+This is the AWS region the SAM-Stack and S3 bucket will be created in.
 
-In this command, `tower-backend-prod` is the name of the bucket (`-b`) to build into (and deploy from) and the name 
-of the CloudFormation stack (`-s`). The `--stage-name` is used as the stage name for the AWS SAM API. The actual name 
-doesn't matter much, choose whatever name describes the purpose of that particular deployment. The `--auth-url` 
-should be any url that the backend can GET and that checks the authorization header and answers `200 OK` if the user 
-should be authorized and `401 UNAUTHORIZED` if the user should not be authorized. If tower-staff makes cross-origin 
-requests, `--allow-origin` needs to be set to the origin the client is making the requests from. If tower-staff is 
-configured to use a reverse proxy, this option can be left out.
+### `AWS_S3_BUCKET`
 
-#### Updating an Existing Deployment
+This is the name of a bucket that the application will be packaged in.  If the bucket doesn't exist, it will be 
+automatically created.  During deployment, the source will be copied to a new object in this bucket, then deployed to
+SAM from the bucket.  The object will no longer be needed afterward, but the bucket is not emptied automatically.
 
-In order to update your deployment, simply pull the changes to the code from upstream and rerun the deployment script
-with the same parameter for `--stack-name`, and `--region`. All other parameters may be changed upon subsequent
-deployments.
+### `AWS_CLOUDFORMATION_STACK`
 
-### Documentation
+This is the name for the CloudFormation stack to deploy the backend in. If the stack does not exist yet, it will be 
+created during deployment.
 
-The deployment-script exposes several options.
+### `AWS_SAM_STAGE_NAME`
 
-#### `-h, --help`
+This is the stage name for the AWS SAM API. The stage name doesn't really matter, since there will always be exactly one
+stage in the stack. However, it is still useful to use a name that matches the purpose of the deployment (such as `Dev`,
+`Staging`, or `Prod`), to prevent confusion when assigning gateways to the various APIs down the road.
 
-Show help and exit.  This will print a quick summary of the available options.
+### `AUTH_URL`
 
-#### `-r, --region`
+Any url that the backend can GET and that checks the authorization header and answers `200 OK` if the user should be
+authorized and `401 UNAUTHORIZED` if the user should not be authorized. The backend will make a GET-request to this
+endpoint, providing the user's authorization-header. If the endpoint answers `200 OK`, the user will be authorized and
+the authorization will be cached for 5 minutes.
 
-Target region, default `eu-central-1`.  This is the AWS-region the SAM-Stack and S3 bucket will be created in, as well
-as the default region for new meetings.
+### `ALLOW_ORIGIN`
 
-#### `-b, --bucket`
-
-S3 bucket for deployment, required.  This is the name of a bucket that the application will be built in.  If the bucket
-doesn't exist, it will be automatically created.  During deployment, the source will be copied to a new object in this
-bucket, built there, then deployed to SAM from the bucket.  The object will no longer be needed afterward, but the
-bucket is not emptied automatically.
-
-#### `-s, --stack-name`
-
-CloudFormation stack name, required.  This is the name for the CloudFormation stack to deploy the backend in.  It will
-be created during deployment.  If an existing stack is given, the deployment will be updated.
-
-#### `--stage-name`
-
-SAM stage name, required. This is the stage name for the AWS SAM API. The stage name doesn't really matter, since 
-there will always be exactly one stage in the stack. However, it is still useful to use a name that matches the purpose 
-of the deployment (such as `Dev`, `Staging`, or `Prod`), to prevent confusion when assigning gateways to the various 
-APIs down the road.
-
-#### `--auth-url`
-
-Endpoint to check basic auth tokens against, required.  This is the endpoint to query to check whether the user should
-be authorized. The backend will make a GET-request to this endpoint, providing the user's authorization-header. If the
-endpoint answers `200 OK`, the user will be authorized and the authorization will be cached for 5 minutes.
-
-#### `--allow-origin`
-
-Value for the Access-Control-Allow-Origin CORS-header, optional.  This is the content for the HTTP-header
-Access-Control-Allow-Origin, it is used verbatim.  If you want to make cross-origin requests from tower-staff, this
-needs to be the origin the tower-staff application is making the requests from.
-
-#### `-l, --disable-printing-logs`
-
-Disable printing logs.  If this flag is provided, the deploy script will produce less output.
+This is the content for the HTTP-header Access-Control-Allow-Origin. It is used verbatim. If you want to make
+cross-origin requests from tower-staff, this needs to be the origin the tower-staff application is making the requests
+from.
 
 ## Api
 
@@ -212,20 +164,20 @@ Example response:
 
 This endpoint will end the meeting, causing all attendee connections to hang up.  No parameters need to be provided,
 the meeting ID will be taken from the username in the basic authorization header.  If successful, the response will be
-an empty JSON-object.
+an empty JSON object.
 
 ### `POST /deleteAttendee`
 
-This endpoint will remove an attendee from the meeting.  If successful, the response will be an empty JSON-object.
+This endpoint will remove an attendee from the meeting.  If successful, the response will be an empty JSON object.
 
 Query string parameters:
  * `attendeeId`: The `ExternalUserId` of the attendee to remove.
 
 ### `GET /poll`
 
-Get the meeting, if one exists.  This is intended to be used to check whether there is a user waiting for assistance.
+Get the meeting if one exists.  This is intended to be used to check whether there is a user waiting for assistance.
 No parameters need to be provided, the meeting ID will be taken from the username in the basic authorization header. If
-the request is successful, but no meeting exists, the response will be an empty JSON-object, if a meeting is found, the
+the request is successful, but no meeting exists, the response will be an empty JSON object, if a meeting is found, the
 Meeting will be returned as outlined below.
 
 Response format:
