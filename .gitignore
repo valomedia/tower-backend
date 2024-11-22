@@ -28,4 +28,16 @@ node_modules/
 # Local configuration
 #
 
+# Local environment.
+#
 .env.local
+.env.development.local
+.env.production.local
+.env.test.local
+
+# Deployment secrets.
+#
+.secrets
+.secrets.development
+.secrets.production
+.secrets.test
