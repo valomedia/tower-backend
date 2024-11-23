@@ -25,6 +25,11 @@ const resolveRelativePath = relativePath => path.resolve(projectDirectory, relat
 const dotenv = resolveRelativePath('.env');
 
 /**
+ * Absolute path of the main secrets file.
+ */
+const secrets = resolveRelativePath('.secrets');
+
+/**
  * Absolute path of the project root.
  */
 const project = resolveRelativePath('.');
@@ -60,6 +65,7 @@ if (!fs.existsSync(build)) {
 
 module.exports = {
     dotenv,
+    secrets,
     project,
     build,
     src,
