@@ -18,6 +18,14 @@ Parameters:
     Description: The name for the stage to create
     Default: "Prod"
     Type: String
+  CommunicationServicesEndpoint:
+    Description: The Azure Communication Services Endpoint to use
+    Default: ""
+    Type: String
+  CommunicationServicesAccesskey:
+    Description: The access key to use to connect to Azure Communication Services
+    Default: ""
+    Type: String
 
 Globals:
   Function:
@@ -27,9 +35,13 @@ Globals:
     Environment:
       Variables:
         MEETINGS_TABLE_NAME: !Ref Meetings
+        ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
+        COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
         REGION: !Ref Region
         AUTH_URL: !Ref AuthUrl
+        COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
+        COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1
@@ -118,6 +130,34 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: "TTL"
         Enabled: true
+  AssistanceRequests:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Username"
+          AttributeType: "S"
+        - AttributeName: "DateTime"
+          AttributeType: "S"
+        - AttributeName: "PartitionKey"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Username"
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: "DateTime"
+          KeySchema:
+            - AttributeName: "PartitionKey"
+              KeyType: HASH
+            - AttributeName: "DateTime"
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: "TTL"
+        Enabled: true
   CallRecords:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -155,7 +195,19 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-  ChimeSdkIndexLambda:
+  CommunicationUserIds:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Username"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Username"
+          KeyType: HASH
+  TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.index
@@ -167,6 +219,104 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /
             Method: GET
+  TowerBackendRequestAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.requestAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /requestAssistance
+            Method: POST
+  TowerBackendAwaitAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.awaitAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /awaitAssistance
+            Method: POST
+  TowerBackendCancelAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.cancelAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /cancelAssistance
+            Method: POST
+  TowerBackendAssistanceTokenLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.assistanceToken
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /assistanceToken
+            Method: GET
+  TowerBackendOfferAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.offerAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /offerAssistance
+            Method: GET
+  TowerBackendBeginAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.beginAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /beginAssistance
+            Method: POST
   ChimeSdkStartLambda:
     Type: AWS::Serverless::Function
     Properties:
