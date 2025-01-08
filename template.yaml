@@ -30,7 +30,6 @@ Globals:
     MemorySize: 128
     Environment:
       Variables:
-        MEETINGS_TABLE_NAME: !Ref Meetings
         ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
         COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
@@ -67,34 +66,6 @@ Resources:
               WWW-Authenticate: "'Basic'"
           ResponseTemplates:
             "application/json": {"message": "Unauthorized"}
-  Meetings:
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-        - AttributeName: "Title"
-          AttributeType: "S"
-        - AttributeName: "DateTime"
-          AttributeType: "S"
-        - AttributeName: "PartitionKey"
-          AttributeType: "S"
-      BillingMode: PAY_PER_REQUEST
-      KeySchema:
-        - AttributeName: "Title"
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: "DateTime"
-          KeySchema:
-            - AttributeName: "PartitionKey"
-              KeyType: HASH
-            - AttributeName: "DateTime"
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: "TTL"
-        Enabled: true
   AssistanceRequests:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
