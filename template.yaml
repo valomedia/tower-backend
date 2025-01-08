@@ -3,10 +3,6 @@ Transform: 'AWS::Serverless-2016-10-31'
 Description: AWS Sam Backend for Tower
 
 Parameters:
-  Region:
-    Description: The AWS SDK Chime REGION
-    Default: "eu-central-1"
-    Type: String
   AuthUrl:
     Description: The url to check the basic auth tokens against
     Type: String
@@ -38,7 +34,6 @@ Globals:
         ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
         COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
-        REGION: !Ref Region
         AUTH_URL: !Ref AuthUrl
         COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
         COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
