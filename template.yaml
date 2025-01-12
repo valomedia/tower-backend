@@ -3,10 +3,6 @@ Transform: 'AWS::Serverless-2016-10-31'
 Description: AWS Sam Backend for Tower
 
 Parameters:
-  Region:
-    Description: The AWS SDK Chime REGION
-    Default: "eu-central-1"
-    Type: String
   AuthUrl:
     Description: The url to check the basic auth tokens against
     Type: String
@@ -18,6 +14,14 @@ Parameters:
     Description: The name for the stage to create
     Default: "Prod"
     Type: String
+  CommunicationServicesEndpoint:
+    Description: The Azure Communication Services Endpoint to use
+    Default: ""
+    Type: String
+  CommunicationServicesAccesskey:
+    Description: The access key to use to connect to Azure Communication Services
+    Default: ""
+    Type: String
 
 Globals:
   Function:
@@ -26,10 +30,12 @@ Globals:
     MemorySize: 128
     Environment:
       Variables:
-        MEETINGS_TABLE_NAME: !Ref Meetings
+        ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
-        REGION: !Ref Region
+        COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
         AUTH_URL: !Ref AuthUrl
+        COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
+        COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1
@@ -60,43 +66,13 @@ Resources:
               WWW-Authenticate: "'Basic'"
           ResponseTemplates:
             "application/json": {"message": "Unauthorized"}
-  # noinspection YAMLSchemaValidation
-  ChimeMeetingsAccessPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: ChimeMeetingsAccess
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - 'chime:CreateMeeting'
-              - 'chime:TagMeeting'
-              - 'chime:TagResource'
-              - 'chime:DeleteMeeting'
-              - 'chime:GetMeeting'
-              - 'chime:ListMeetings'
-              - 'chime:BatchCreateAttendee'
-              - 'chime:CreateAttendee'
-              - 'chime:DeleteAttendee'
-              - 'chime:GetAttendee'
-              - 'chime:ListAttendees'
-              - 's3:GetBucketPolicy'
-              - 's3:GetBucketLocation'
-            Resource: '*'
-      Roles:
-        - Ref: ChimeSdkStartLambdaRole
-        - Ref: ChimeSdkJoinLambdaRole
-        - Ref: ChimeSdkEndLambdaRole
-        - Ref: ChimeSdkDeleteAttendeeLambdaRole
-        - Ref: ChimeSdkPollLambdaRole
-  Meetings:
+  AssistanceRequests:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Type: AWS::DynamoDB::Table
     Properties:
       AttributeDefinitions:
-        - AttributeName: "Title"
+        - AttributeName: "Username"
           AttributeType: "S"
         - AttributeName: "DateTime"
           AttributeType: "S"
@@ -104,7 +80,7 @@ Resources:
           AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
-        - AttributeName: "Title"
+        - AttributeName: "Username"
           KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: "DateTime"
@@ -155,7 +131,19 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-  ChimeSdkIndexLambda:
+  CommunicationUserIds:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Username"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Username"
+          KeyType: HASH
+  TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.index
@@ -167,14 +155,48 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /
             Method: GET
-  ChimeSdkStartLambda:
+  TowerBackendRequestAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.start
+      Handler: handlers.requestAssistance
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref Meetings
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /requestAssistance
+            Method: POST
+  TowerBackendAwaitAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.awaitAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /awaitAssistance
+            Method: POST
+  TowerBackendCancelAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.cancelAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CallRecords
       Events:
@@ -182,74 +204,55 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref TowerApi
-            Path: /start
+            Path: /cancelAssistance
             Method: POST
-  ChimeSdkJoinLambda:
+  TowerBackendAssistanceTokenLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.join
+      Handler: handlers.assistanceToken
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref Meetings
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CallRecords
+            TableName: !Ref CommunicationUserIds
       Events:
         Api1:
           Type: Api
           Properties:
             RestApiId: !Ref TowerApi
-            Path: /join
-            Method: POST
-  ChimeSdkDeleteAttendeeLambda:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers.deleteAttendee
-      CodeUri: build/
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref Meetings
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CallRecords
-      Events:
-        Api1:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TowerApi
-            Path: /deleteAttendee
-            Method: POST
-  ChimeSdkEndLambda:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers.end
-      CodeUri: build/
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref Meetings
-        - DynamoDBCrudPolicy:
-            TableName: !Ref CallRecords
-      Events:
-        Api1:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TowerApi
-            Path: /end
-            Method: POST
-  ChimeSdkPollLambda:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers.poll
-      CodeUri: build/
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref Meetings
-      Events:
-        Api1:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TowerApi
-            Path: /poll
+            Path: /assistanceToken
             Method: GET
+  TowerBackendOfferAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.offerAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /offerAssistance
+            Method: GET
+  TowerBackendBeginAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.beginAssistance
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistanceRequests
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /beginAssistance
+            Method: POST
   BasicAuthLambda:
     Type: AWS::Serverless::Function
     Properties:

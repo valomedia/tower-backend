@@ -8,10 +8,12 @@ To deploy the service, configure the environment variables and execute the deplo
 
 ### Configuration
 
-To configure the service for your environment, copy `.env`, `.env.development` and `.env.production` to `.env.local`, 
-`.env.development.local` and `.env.production.local`, respectively, and update the configuration options as needed. When
-updating an existing deployment, `AWS_REGION`, `AWS_CLOUDFORMATION_STACK` and `AWS_SAM_STAGE_NAME` need to be the same
-as on the original deployment. All other options can be changed at any time.
+To configure the service, you will need to at a minimum supply values for the environment variables `AUTH_URL`,
+`AZ_COMMUNICATION_SERVICES_ENDPOINT`, and `AZ_COMMUNICATION_SERVICES_ACCESSKEY` (documented below). For the former two 
+you will normally want to create a file called `.env.development.local` or `.env.production.local` (depending on which
+environment you want to deploy), the latter should go into `.secrets.development` or `.secrets.production` instead.
+These files should be in env file format. To update an existing deployment, make sure to specify the same values as the
+ones supplied during the initial deployment for `AWS_REGION`, `AWS_CLOUDFORMATION_STACK` and `AWS_SAM_STAGE_NAME`.
 
 ### Building
 
@@ -73,6 +75,14 @@ This is the content for the HTTP-header Access-Control-Allow-Origin. It is used 
 cross-origin requests from tower-staff, this needs to be the origin the tower-staff application is making the requests
 from.
 
+### `AZ_COMMUNICATION_SERVICES_ENDPOINT`
+
+The endpoint to use to connect to Azure Communication Services.
+
+### `AZ_COMMUNICATION_SERVICES_ACCESSKEY`
+
+The access key to use to connect to Azure Communication Services.
+
 ## Api
 
 The following endpoints are available on the backend, once deployed.
@@ -82,144 +92,156 @@ The following endpoints are available on the backend, once deployed.
 This endpoint will simply reply `{message: "Success"}`, it is intended to be used to check whether the api is online
 and the credentials are valid.
 
-### `POST /join`
+### `POST /requestAssistance`
 
-This endpoint will create the meeting if it doesn't exist yet, add an attendee and return all information necessary to
-join the call.  No parameters need to be provided, the call location will be the same as the deployment location, the
-user ID will be randomly generated and prefixed with the meeting ID. The meeting ID in turn will be taken from the
-username used in the basic authorization header.
+This is called by the end-user apps to add a new request to the queue. This will issue an access token for Azure 
+Communication Services to the user that made the request (creating an identity for the user if none exists yet). It 
+will then add the user's identity to the queue to be picked up by an assistant. If this is called twice using the 
+same user account, the new request will replace the old one (the assumption here being that the user lost the 
+connection and is retrying). This will return a user id and token to use to connect to ACS, along with the expiry 
+time of the token, and an interval in seconds for how often to call the `/awaitAssistance`-endpoint to keep the 
+request alive.
 
 Response format:
 
 ```
-    joinInfo: {
-        meetingResponse: {
-            Meeting: {
-                externalMeetingId: String | null,
-                primaryMeetingId: String | null,
-                mediaPlacement: {
-                    audioFallbackUrl: String | null,
-                    audioHostUrl: String,
-                    signalingUrl: String,
-                    turnControlUrl: String | null,
-                    eventIngestionUrl: String | null
-                },
-                mediaRegion: String,
-                meetingId: String
-            }
-        },
-        attendeeResponse: {
-            Attendee: {
-                attendeeId: String,
-                externalUserId: String,
-                joinToken: String
-            }
-        }
-    }
-```
-
-Example response:
-
-```
 {
-  "joinInfo": {
-    "meetingResponse": {
-      "Meeting": {
-        "MeetingId": "fdee05b8-e3cd-41e4-a030-7b85a21c7979",
-        "MeetingHostId": null,
-        "ExternalMeetingId": "valomedia",
-        "MediaRegion": "eu-central-1",
-        "MediaPlacement": {
-          "AudioHostUrl": "1ef752e5d51c7ae61dc98c489068e09d.k.m1.ec1.app.chime.aws:3478",
-          "AudioFallbackUrl": "wss://haxrp.m1.ec1.app.chime.aws:443/calls/fdee05b8-e3cd-41e4-a030-7b85a21c7979",
-          "SignalingUrl": "wss://signal.m1.ec1.app.chime.aws/control/fdee05b8-e3cd-41e4-a030-7b85a21c7979",
-          "TurnControlUrl": "https://7979.cell.eu-central-1.meetings.chime.aws/v2/turn_sessions",
-          "ScreenDataUrl": "wss://bitpw.m1.ec1.app.chime.aws:443/v2/screen/fdee05b8-e3cd-41e4-a030-7b85a21c7979",
-          "ScreenViewingUrl": "wss://bitpw.m1.ec1.app.chime.aws:443/ws/connect?passcode=null&viewer_uuid=null&X-BitHub-Call-Id=fdee05b8-e3cd-41e4-a030-7b85a21c7979",
-          "ScreenSharingUrl": "wss://bitpw.m1.ec1.app.chime.aws:443/v2/screen/fdee05b8-e3cd-41e4-a030-7b85a21c7979",
-          "EventIngestionUrl": "https://data.svc.ue1.ingest.chime.aws/v1/client-events"
-        },
-        "PrimaryMeetingId": null,
-        "TenantIds": [],
-        "MeetingArn": "arn:aws:chime:eu-central-1:667381599324:meeting/fdee05b8-e3cd-41e4-a030-7b85a21c7979"
-      }
+    userToken: {
+        user: {username: string, communicationUserId: string},
+        token: string,
+        expiresOn: string
     },
-    "attendeeResponse": {
-      "Attendee": {
-        "ExternalUserId": "5de389f8#valomedia",
-        "AttendeeId": "582e3b1f-115a-8024-a8dc-b3257e3e4856",
-        "JoinToken": "NTgyZTNiMWYtMTE1YS04MDI0LWE4ZGMtYjMyNTdlM2U0ODU2OmMwZGM0NjE5LTMwNDgtNDc1Yy04NjY1LTg1ZGM4NmU5N2RiYw",
-        "Capabilities": {
-          "Audio": "SendReceive",
-          "Video": "SendReceive",
-          "Content": "SendReceive"
-        }
-      }
-    }
-  }
+    keepaliveInterval: number
 }
 ```
 
-### `POST /end`
+Example response:
 
-This endpoint will end the meeting, causing all attendee connections to hang up.  No parameters need to be provided,
-the meeting ID will be taken from the username in the basic authorization header.  If successful, the response will be
-an empty JSON object.
+```json
+{
+    "userToken": {
+        "user": {
+          "username": "theo.test",
+          "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963"
+        },
+        "token": "…",
+        "expiresOn": "2025-01-08T20:55:05.176Z"
+    },
+    "keepaliveInterval": 10
+}
+```
 
-### `POST /deleteAttendee`
+### `POST /awaitAssistance`
 
-This endpoint will remove an attendee from the meeting.  If successful, the response will be an empty JSON object.
+This is called repeatedly by the end-user apps to keep the assistance request active while waiting for an assistant 
+to respond. Which assistance request to update is automatically determined from the identity of the user account 
+making the request. If the client fails to contact this endpoint, the request will time out and be removed by the 
+backend. This is done to reduce the number of times an assistant will respond to a request, just to find that the 
+user has lost the connection while waiting.
 
-Query string parameters:
- * `attendeeId`: The `ExternalUserId` of the attendee to remove.
+This will send a 200-response if the request was successfully updated. A 404-response will be returned if the 
+request could not be found. The latter could mean that something has gone wrong, but it can also occur when an 
+assistant has already accepted the assistance request and is in the process of establishing a connection. Because of 
+this, clients should wait some time before giving up when they get a 404-response from this endpoint.
 
-### `GET /poll`
+### `POST /cancelAssistance`
 
-Get the meeting if one exists.  This is intended to be used to check whether there is a user waiting for assistance.
-No parameters need to be provided, the meeting ID will be taken from the username in the basic authorization header. If
-the request is successful, but no meeting exists, the response will be an empty JSON object, if a meeting is found, the
-Meeting will be returned as outlined below.
+This can be called by the end-user apps to indicate to the backend that the user has given up on waiting for an 
+assistant. The backend will then remove the assistance request for the user making the call from the list of open 
+assistance requests.
+
+This will return a 200-response if the request was successfully removed. It will return a 404-response if the 
+assistance request could not be found.
+
+### `GET /assistanceToken`
+
+This will mint an ACS access token for the assistant making the request. The token will be valid for 24 hours and is 
+meant to be reused across calls.
 
 Response format:
 
 ```
-    Meeting: {
-        externalMeetingId: String | null,
-        primaryMeetingId: String | null,
-        mediaPlacement: {
-            audioFallbackUrl: String | null,
-            audioHostUrl: String,
-            signalingUrl: String,
-            turnControlUrl: String | null,
-            eventIngestionUrl: String | null
-        },
-        mediaRegion: String,
-        meetingId: String
-    }
+{
+    userToken: {
+        user: {username: string, communicationUserId: string},
+        token: string,
+        expiresOn: string
+    },
+}
 ```
 
 Example response:
 
-``` 
+```json
 {
-  "Meeting": {
-    "MeetingId": "6f725b2d-829b-4b1c-901e-38119da37979",
-    "MeetingHostId": null,
-    "ExternalMeetingId": "valomedia",
-    "MediaRegion": "eu-central-1",
-    "MediaPlacement": {
-      "AudioHostUrl": "1411f548f5cad1e00e18e1d83ff87b03.k.m2.ec1.app.chime.aws:3478",
-      "AudioFallbackUrl": "wss://haxrp.m2.ec1.app.chime.aws:443/calls/6f725b2d-829b-4b1c-901e-38119da37979",
-      "SignalingUrl": "wss://signal.m2.ec1.app.chime.aws/control/6f725b2d-829b-4b1c-901e-38119da37979",
-      "TurnControlUrl": "https://7979.cell.eu-central-1.meetings.chime.aws/v2/turn_sessions",
-      "ScreenDataUrl": "wss://bitpw.m2.ec1.app.chime.aws:443/v2/screen/6f725b2d-829b-4b1c-901e-38119da37979",
-      "ScreenViewingUrl": "wss://bitpw.m2.ec1.app.chime.aws:443/ws/connect?passcode=null&viewer_uuid=null&X-BitHub-Call-Id=6f725b2d-829b-4b1c-901e-38119da37979",
-      "ScreenSharingUrl": "wss://bitpw.m2.ec1.app.chime.aws:443/v2/screen/6f725b2d-829b-4b1c-901e-38119da37979",
-      "EventIngestionUrl": "https://data.svc.ue1.ingest.chime.aws/v1/client-events"
-    },
-    "PrimaryMeetingId": null,
-    "TenantIds": [],
-    "MeetingArn": "arn:aws:chime:eu-central-1:667381599324:meeting/6f725b2d-829b-4b1c-901e-38119da37979"
-  }
+    "userToken": {
+        "user": {
+          "username": "michael.assistent",
+          "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000023-ffe3-3212-f4f3-ad3a0d00457f"
+        },
+        "token": "…",
+        "expiresOn": "2025-01-09T19:17:39.743Z"
+    }
+}
+```
+
+### `GET /offerAssistance`
+
+This will check for open assistance requests and return the oldest one, if any. If there aren't any open assistance 
+requests, the response will be a 200-response, with an empty object in its body. This allows for checking if there 
+is an assistance request to be answered, so the incoming request can be shown to the assistants.
+
+Response format:
+
+```
+{
+    assistanceRequest: {
+        user: {username: string, communicationUserId: string},
+        startDateTime: string
+    }
+}
+```
+
+Example response:
+
+```json
+{
+    "assistanceRequest": {
+        "user": {
+            "username": "theo.test",
+            "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963"
+        },
+        "startDateTime": "2025-01-08T19:27:59.759Z"
+    }
+}
+```
+
+### `POST /beginAssistance`
+
+This will remove the oldest assistance request from the queue and return it. If there aren't any open assistance 
+requests, this endpoint will respond with a 404-response.
+
+Response format:
+
+```
+{
+    assistanceRequest: {
+        user: {username: string, communicationUserId: string},
+        startDateTime: string
+    }
+}
+```
+
+Example response:
+
+```json
+{
+    "assistanceRequest": {
+        "user": {
+            "username": "theo.test",
+            "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963"
+        },
+        "startDateTime": "2025-01-08T19:27:59.759Z"
+    }
 }
 ```

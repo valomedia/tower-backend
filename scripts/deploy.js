@@ -17,7 +17,7 @@ const { spawnSync } = require('child_process');
 
 const { spawnOrFail } = require('./lib');
 
-let region, bucket, stack, stage, authUrl, allowOrigin;
+let region, bucket, stack, stage, authUrl, allowOrigin, communicationServicesEndpoint, communicationServicesAccesskey;
 
 let disablePrintingLogs = false;
 let env = 'development';
@@ -102,6 +102,8 @@ function loadEnv() {
     stage = process.env.AWS_SAM_STAGE_NAME;
     authUrl = process.env.AUTH_URL;
     allowOrigin = process.env.ALLOW_ORIGIN;
+    communicationServicesEndpoint = process.env.AZ_COMMUNICATION_SERVICES_ENDPOINT;
+    communicationServicesAccesskey = process.env.AZ_COMMUNICATION_SERVICES_ACCESSKEY;
 }
 
 function ensureTools() {
@@ -117,8 +119,8 @@ ensureTools();
 console.log(`\nStarting build process`)
 spawnOrFail('npm', ['run', 'build'], {}, !disablePrintingLogs);
 
-console.log('Deploying serverless application');
-console.log(`Using region ${region}, bucket ${bucket}, stack ${stack}, stage ${stage}, authUrl ${authUrl}`);
+console.log('\nPackaging serverless application');
+console.log(`Using region ${region}, bucket ${bucket}`);
 ensureBucket();
 spawnOrFail(
     'sam',
@@ -126,8 +128,20 @@ spawnOrFail(
     {},
     false
 );
-let parameterOverrides
-    = `Region=${region} StageName=${stage} AuthUrl=${authUrl} ${allowOrigin ? "AllowOrigin=" + allowOrigin : ''}`;
+
+console.log('\nDeploying serverless application');
+console.log(`Deploying to stage ${stage} of stack ${stack}`);
+console.log(`Using auth url ${authUrl}, ACS endpoint ${communicationServicesEndpoint}`);
+let parameterOverrides = [
+    `Region=${region}`,
+    `StageName=${stage}`,
+    `AuthUrl=${authUrl}`,
+    allowOrigin && `AllowOrigin=${allowOrigin}`,
+    `CommunicationServicesEndpoint=${communicationServicesEndpoint}`,
+    `CommunicationServicesAccesskey=${communicationServicesAccesskey}`
+]
+    .filter(Boolean)
+    .join(' ');
 spawnOrFail(
     'sam',
     [
@@ -147,6 +161,7 @@ spawnOrFail(
     null,
     !disablePrintingLogs
 );
+
 if (!disablePrintingLogs) {
     console.log('Tower backend URL: ');
 }
