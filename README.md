@@ -83,6 +83,21 @@ The endpoint to use to connect to Azure Communication Services.
 
 The access key to use to connect to Azure Communication Services.
 
+### `HOURS`
+
+The regular opening hours for each day of the week, starting with Sunday. Days are separated by a colon character and
+multiple time intervals for the same day are separated by a comma. Each time interval is specified by a start and end
+time, each formatted as hhmm, separated by a slash.
+
+### `EXTRA_HOURS`
+
+This is comma-separated list of time intervals, each formatted as YYYY-MM-DDThh:mm/hh:mm. The end time must be
+after the start time (you can not have an interval that crosses midnight).
+
+### `HOLIDAYS`
+
+This is a comma-separated list of dates where the regular opening hours don't apply, each formatted as YYYY-MM-DD.
+
 ## Api
 
 The following endpoints are available on the backend, once deployed.
