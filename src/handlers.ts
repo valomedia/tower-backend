@@ -44,7 +44,6 @@ const extraHours = process.env.EXTRA_HOURS!.split(",").map(interval => {
     return [date + "T" + startTime, date + "T" + endTime];
 });
 const holidays = process.env.HOLIDAYS!.split(",");
-const tz = process.env.TZ!;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
