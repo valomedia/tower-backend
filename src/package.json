@@ -1,6 +1,6 @@
 {
   "name": "tower-backend-lambda",
-  "version": "0.7.0",
+  "version": "1.0.0-alpha.1",
   "description": "AWS SAM backend for Tower Lambda handler",
   "dependencies": {
     "@azure/communication-common": "^2.3.1",
