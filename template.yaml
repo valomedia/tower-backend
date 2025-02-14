@@ -22,6 +22,22 @@ Parameters:
     Description: The access key to use to connect to Azure Communication Services
     Default: ""
     Type: String
+  Hours:
+    Description: The regular opening hours of the service
+    Default: ""
+    Type: String
+  ExtraHours:
+    Description: Opening hours that apply in addition to the regular opening hours
+    Default: ""
+    Type: String
+  Holidays:
+    Description: Days where the normal opening hours don't apply
+    Default: ""
+    Type: String
+  Tz:
+    Description: The time zone to use for the opening hours
+    Default: ""
+    Type: String
 
 Globals:
   Function:
@@ -36,6 +52,10 @@ Globals:
         AUTH_URL: !Ref AuthUrl
         COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
         COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
+        HOURS: !Ref Hours
+        EXTRA_HOURS: !Ref ExtraHours
+        HOLIDAYS: !Ref Holidays
+        TZ: !Ref Tz
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1
