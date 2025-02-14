@@ -36,6 +36,14 @@ const communicationUserIdsTableName = process.env.COMMUNICATION_USER_IDS_TABLE_N
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
+const hours = process.env.HOURS!.split(":").map(intervals =>
+    intervals.split(",").map(interval => interval.split("/").map(time => time.slice(0, 2) + ":" + time.slice(-2)))
+);
+const extraHours = process.env.EXTRA_HOURS!.split(",").map(interval => {
+    const [date, startTime, endTime] = interval.split(/[\/T]/);
+    return [date + "T" + startTime, date + "T" + endTime];
+});
+const holidays = process.env.HOLIDAYS!.split(",");
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
@@ -60,6 +68,8 @@ const ASSISTANCE_REQUEST_KEEPALIVE_TIMEOUT_SECONDS: number = 30;
 
 const ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES: number = 120;
 
+const NUMBER_OF_DAYS_OF_OPENING_HOURS_RETURNED_BY_INDEX_ENDPOINT: number = 8;
+
 /*
  * Handlers
  */
@@ -69,7 +79,40 @@ const ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES: number = 120;
  * Return a success response.
  */
 export const index: Handler = async (_) => {
-    return response(200, 'application/json', JSON.stringify({message: 'Success'}));
+    const now = new Date();
+    const dates = Array(NUMBER_OF_DAYS_OF_OPENING_HOURS_RETURNED_BY_INDEX_ENDPOINT)
+        .fill(now)
+        .map((v, i) => {
+            const date = new Date((new Date(v)).setDate(v.getDate() + i));
+            const y = date.getFullYear();
+            const m = date.getMonth() + 1;
+            const d = date.getDate();
+            return `${y}-${('' + m).padStart(2, '0')}-${('' + d).padStart(2, '0')}`;
+        });
+    const openingHours = dates.map(calculateOpeningHours);
+
+    return response(
+        200,
+        'application/json',
+        JSON.stringify({
+            message: 'Success',
+            openingHours: {
+                time: ('' + now.getHours()).padStart(2, '0') + ':' + ('' + now.getMinutes()).padStart(2, '0'),
+                status: openingHours[0].some(([start, end]) => start < now && now < end) ? 'open' : 'closed',
+                schedule: openingHours
+                    .map(intervals => intervals
+                        .map(interval => interval
+                            .map(date =>
+                                ('' + date.getHours()).padStart(2, '0') + ':' + ('' + date.getMinutes()).padStart(2, '0')
+                            )
+                            .join('-')
+                        )
+                        .join(', ')
+                    )
+                    .reduce((acc, x, i) => ({...acc, [dates[i]]: x}), {})
+            }
+        })
+    );
 };
 
 // noinspection JSUnusedGlobalSymbols
@@ -462,3 +505,21 @@ const response = (statusCode: number, contentType: string, body: any, isBase64En
     body: body,
     isBase64Encoded
 });
+
+/**
+ * Calculate opening hours for a given date.
+ *
+ * @param date  The date to calculate the opening hours for, formatted as YYYY-MM-DD.
+ *
+ * @returns A list of time intervals, each specified by a tuple of a start and end Date.
+ */
+const calculateOpeningHours = (date: string): Date[][] => [
+    !holidays.includes(date) && hours[(new Date(date)).getUTCDay()].map(x => x.map(y => date + "T" + y)),
+    extraHours.filter(([x]) => x.startsWith(date))
+]
+    .flat()
+    .filter((x): x is string[] => !!x)
+    .map(interval => interval.map(date => {
+        const components = date.split(/[-T:]/);
+        return new Date(+components[0], +components[1] - 1, +components[2], +components[3], +components[4])
+    }));

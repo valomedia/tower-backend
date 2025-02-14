@@ -104,6 +104,23 @@ function loadEnv() {
     allowOrigin = process.env.ALLOW_ORIGIN;
     communicationServicesEndpoint = process.env.AZ_COMMUNICATION_SERVICES_ENDPOINT;
     communicationServicesAccesskey = process.env.AZ_COMMUNICATION_SERVICES_ACCESSKEY;
+    hours = process.env.HOURS;
+    extraHours = process.env.EXTRA_HOURS;
+    holidays = process.env.HOLIDAYS;
+    tz = process.env.TZ;
+
+    if (hours && !hours.match(/^(((\d{4}\/\d{4},)*\d{4}\/\d{4})?:){6}((\d{4}\/\d{4},)*\d{4}\/\d{4})?$/)) {
+        console.log(`Opening hours are formatted incorrectly`);
+        process.exit(1);
+    }
+    if (extraHours && !extraHours.split(",").every(x => x.match(/^\d{4}-\d\d-\d\dT\d\d:\d\d\/\d\d:\d\d$/))) {
+        console.log(`Extra opening hours are formatted incorrectly`);
+        process.exit(1);
+    }
+    if (holidays && !holidays.split(",").every(x => x.match(/^\d{4}-\d\d-\d\d$/))) {
+        console.log(`Holidays are formatted incorrectly`);
+        process.exit(1);
+    }
 }
 
 function ensureTools() {
@@ -116,7 +133,7 @@ parseArgs();
 loadEnv();
 ensureTools();
 
-console.log(`\nStarting build process`)
+console.log(`\nStarting build process`);
 spawnOrFail('npm', ['run', 'build'], {}, !disablePrintingLogs);
 
 console.log('\nPackaging serverless application');
@@ -138,7 +155,11 @@ let parameterOverrides = [
     `AuthUrl=${authUrl}`,
     allowOrigin && `AllowOrigin=${allowOrigin}`,
     `CommunicationServicesEndpoint=${communicationServicesEndpoint}`,
-    `CommunicationServicesAccesskey=${communicationServicesAccesskey}`
+    `CommunicationServicesAccesskey=${communicationServicesAccesskey}`,
+    hours && `Hours=${hours}`,
+    extraHours && `ExtraHours=${extraHours}`,
+    holidays && `Holidays=${holidays}`,
+    tz && `Tz=${tz}`
 ]
     .filter(Boolean)
     .join(' ');
