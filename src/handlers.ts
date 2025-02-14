@@ -36,8 +36,10 @@ const communicationUserIdsTableName = process.env.COMMUNICATION_USER_IDS_TABLE_N
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
-const hours = process.env.HOURS!.split(":").map(intervals =>
-    intervals.split(",").map(interval => interval.split("/").map(time => time.slice(0, 2) + ":" + time.slice(-2)))
+const hours = process.env.HOURS!.split(":").map(intervals => intervals
+    .split(",")
+    .filter(Boolean)
+    .map(interval => interval.split("/").map(time => time.slice(0, 2) + ":" + time.slice(-2)))
 );
 const extraHours = process.env.EXTRA_HOURS!.split(",").map(interval => {
     const [date, startTime, endTime] = interval.split(/[\/T]/);
