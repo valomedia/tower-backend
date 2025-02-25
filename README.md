@@ -104,18 +104,19 @@ The following endpoints are available on the backend, once deployed.
 
 ### `GET /`
 
-This endpoint will return some general information about the service. It can be used to ensure the api is online, 
-and to check the opening hours. It will return a `message`, which is currently always `"Success"`, along with an 
-`openingHours`-object, giving the current `time` (as hh:mm) in the time zone the service operates in, a `status`, 
+This endpoint will return some general information about the service. It can be used to ensure the api is online and 
+has a compatible version, and to check the opening hours. It will return a `message`, which is currently always 
+`"Success"`, along with an `apiVersion`-string containing the major and minor version of the backend, and an 
+`openingHours`-object, giving the current `time` (as hh:mm) in the time zone the service operates in, a `status`,
 indicating whether the service is currently `"open"` or `"closed"`, and a `schedule`, mapping the next few days (as 
 YYYY-MM-DD) to a string describing the opening hours in a way that is intended to be human-readable.
-
 
 Response format:
 
 ```
 {
     message: "Success",
+    apiVersion: string,
     openingHours: {
         time: string,
         status: "open"|"closed",
@@ -129,6 +130,7 @@ Example response:
 ```json
 {
     "message": "Success",
+    "apiVersion": "1.0",
     "openingHours": {
         "time": "13:37",
         "status": "closed",
