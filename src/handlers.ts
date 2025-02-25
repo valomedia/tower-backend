@@ -25,6 +25,7 @@ import {
 import { AssistanceRequest, User, UserToken } from './types';
 import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
 import { randomUUID } from 'crypto';
+import * as fs from 'node:fs';
 
 // Meetings with users waiting for an assistant to join.
 const ddb = new AWS.DynamoDB();
@@ -72,6 +73,10 @@ const ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES: number = 120;
 
 const NUMBER_OF_DAYS_OF_OPENING_HOURS_RETURNED_BY_INDEX_ENDPOINT: number = 8;
 
+const BACKEND_VERSION: string = JSON.parse(fs.readFileSync('package.json', 'utf-8')).version;
+
+const API_VERSION: string = BACKEND_VERSION.match(/\d+\.\d+/)![0];
+
 /*
  * Handlers
  */
@@ -98,6 +103,7 @@ export const index: Handler = async (_) => {
         'application/json',
         JSON.stringify({
             message: 'Success',
+            apiVersion: API_VERSION,
             openingHours: {
                 time: ('' + now.getHours()).padStart(2, '0') + ':' + ('' + now.getMinutes()).padStart(2, '0'),
                 status: openingHours[0].some(([start, end]) => start < now && now < end) ? 'open' : 'closed',
