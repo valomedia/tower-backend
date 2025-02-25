@@ -104,8 +104,47 @@ The following endpoints are available on the backend, once deployed.
 
 ### `GET /`
 
-This endpoint will simply reply `{message: "Success"}`, it is intended to be used to check whether the api is online
-and the credentials are valid.
+This endpoint will return some general information about the service. It can be used to ensure the api is online, 
+and to check the opening hours. It will return a `message`, which is currently always `"Success"`, along with an 
+`openingHours`-object, giving the current `time` (as hh:mm) in the time zone the service operates in, a `status`, 
+indicating whether the service is currently `"open"` or `"closed"`, and a `schedule`, mapping the next few days (as 
+YYYY-MM-DD) to a string describing the opening hours in a way that is intended to be human-readable.
+
+
+Response format:
+
+```
+{
+    message: "Success",
+    openingHours: {
+        time: string,
+        status: "open"|"closed",
+        schedule: {[key: string]: string}
+    }
+}
+```
+
+Example response:
+
+```json
+{
+    "message": "Success",
+    "openingHours": {
+        "time": "13:37",
+        "status": "closed",
+        "schedule": {
+            "2025-02-14": "08:00-12:00, 13:00-17:00",
+            "2025-02-15": "",
+            "2025-02-16": "",
+            "2025-02-17": "",
+            "2025-02-18": "12:00-16:00",
+            "2025-02-19": "12:00-16:00",
+            "2025-02-20": "12:00-16:00",
+            "2025-02-21": ""
+        }
+    }
+}
+```
 
 ### `POST /requestAssistance`
 
