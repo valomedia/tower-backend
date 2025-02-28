@@ -172,6 +172,8 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            Auth:
+              Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /
             Method: GET
