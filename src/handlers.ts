@@ -541,3 +541,16 @@ const calculateOpeningHours = (date: string): Date[][] => [
 
 const isUUID = (uuid: any): uuid is UUID =>
     typeof uuid == 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){4}[0-9a-f]{8}$/i.test(uuid);
+
+/**
+ * Get the username for a given UUID.
+ *
+ * End users currently do not need to create an account. Instead, each device will register for a random UUID when the
+ * user first uses the service. Since we normally have human-readable usernames, we need to map this UUID to the actual
+ * username to be used internally. Currently, this is done by just prefixing the UUID with the string "user_".
+ *
+ * @param uuid The UUID to calculate the username for.
+ *
+ * @returns The username to use for the user with the given UUID.
+ */
+const getUsername = (uuid: UUID) => 'user_' + uuid.toLowerCase();
