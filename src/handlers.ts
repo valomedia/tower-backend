@@ -507,6 +507,13 @@ const generatePolicy = (principalId: string, effect: StatementEffect): AuthRespo
     }
 });
 
+const request = ({body}: {body: string}): {[key: string]: any}|undefined => {
+    try {
+        const result = JSON.parse(body);
+        return typeof result == 'object' ? result : undefined;
+    } catch {}
+};
+
 const response = (statusCode: number, contentType: string, body: any, isBase64Encoded = false) => ({
     statusCode: statusCode,
     headers: {'Content-Type': contentType,},
