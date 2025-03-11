@@ -172,9 +172,28 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            Auth:
+              Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /
             Method: GET
+  TowerBackendRegisterUserLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.registerUser
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            Auth:
+              Authorizer: NONE
+            RestApiId: !Ref TowerApi
+            Path: /registerUser
+            Method: POST
   TowerBackendRequestAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
@@ -189,6 +208,8 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            Auth:
+              Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /requestAssistance
             Method: POST
@@ -206,6 +227,8 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            Auth:
+              Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /awaitAssistance
             Method: POST
@@ -223,6 +246,8 @@ Resources:
         Api1:
           Type: Api
           Properties:
+            Auth:
+              Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /cancelAssistance
             Method: POST
