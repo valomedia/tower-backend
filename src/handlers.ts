@@ -24,8 +24,8 @@ import {
 } from '@azure/communication-identity';
 import { AssistanceRequest, User, UserToken } from './types';
 import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
-import { randomUUID } from 'crypto';
 import * as fs from 'node:fs';
+import { UUID, randomUUID } from 'node:crypto';
 
 // Meetings with users waiting for an assistant to join.
 const ddb = new AWS.DynamoDB();
@@ -538,3 +538,6 @@ const calculateOpeningHours = (date: string): Date[][] => [
         const components = date.split(/[-T:]/);
         return new Date(+components[0], +components[1] - 1, +components[2], +components[3], +components[4])
     }));
+
+const isUUID = (uuid: any): uuid is UUID =>
+    typeof uuid == 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){4}[0-9a-f]{8}$/i.test(uuid);
