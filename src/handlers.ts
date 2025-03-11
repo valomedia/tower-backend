@@ -131,14 +131,18 @@ export const index: Handler = async (_) => {
  * identity for the user if none exists yet). It will then add the user's identity to the queue to be picked up by an
  * assistant.
  *
- * @param event The event object containing the requestContext, used to associate the request with an identity.
+ * @param event The event containing the request body with the userId parameter needed for the request.
  *
  * @return A 200-response with the ACS user id, access token and expiry time for the user requesting assistance.
  */
 export const requestAssistance: Handler = async (event) => {
-    const username = event.requestContext.authorizer.principalId;
-    console.info(`User ${username} is requesting assistance`);
+    const userId = request(event)?.userId;
+    if (!isUUID(userId)) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
+    }
 
+    console.info(`User ${userId} is requesting assistance`);
+    const username = getUsername(userId);
     const userToken = await getUserToken(
         username,
         ['voip.join'],
@@ -159,13 +163,18 @@ export const requestAssistance: Handler = async (event) => {
  * kept active through this endpoint will be cleaned up, to reduce the number of times assistants will answer a
  * request just to find the user has lost the connection while waiting.
  *
- * @param event The event object containing the requestContext, used to associate the request with an identity.
+ * @param event The event containing the request body with the userId parameter needed for the request.
  *
  * @return 200 if the assistance request was successfully updated, 404 if the assistance request was not found.
  */
 export const awaitAssistance: Handler = async (event) => {
-    const username = event.requestContext.authorizer.principalId;
-    console.info(`User ${username} is waiting for assistance`);
+    const userId = request(event)?.userId;
+    if (!isUUID(userId)) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
+    }
+
+    console.info(`User ${userId} is waiting for assistance`);
+    const username = getUsername(userId);
     const user = {username, ...(await getOrCreateCommunicationUserIdentifier(username))};
     return await updateAssistanceRequest(user)
         ? response(200, 'application/json', '{}')
@@ -179,13 +188,18 @@ export const awaitAssistance: Handler = async (event) => {
  * This will delete the assistance request of the user. It is used by the client to clean up the assistance request
  * when the user hangs up while waiting.
  *
- * @param event The event object containing the requestContext, used to associate the request with an identity.
+ * @param event The event containing the request body with the userId parameter needed for the request.
  *
  * @return 200 if the assistance request was successfully deleted, 404 if the assistance request was not found.
  */
 export const cancelAssistance: Handler = async (event) => {
-    const username = event.requestContext.authorizer.principalId;
-    console.info(`User ${username} is giving up on getting assistance`);
+    const userId = request(event)?.userId;
+    if (!isUUID(userId)) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
+    }
+
+    console.info(`User ${userId} is giving up on getting assistance`);
+    const username = getUsername(userId);
     const assistanceRequest = await deleteAssistanceRequest(username);
     if (assistanceRequest) {await logAbandonment(username, assistanceRequest.startDateTime, new Date());}
     return assistanceRequest
