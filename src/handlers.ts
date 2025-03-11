@@ -125,6 +125,31 @@ export const index: Handler = async (_) => {
 
 // noinspection JSUnusedGlobalSymbols
 /**
+ * Register for an identity.
+ *
+ * This will create a new identity in Azure Communication Services and file it under a username derived from a randomly
+ * generated UUID. This UUID is then returned to the client. It isn't technically necessary for the client to ever
+ * hit this endpoint, since the other endpoints will create the necessary user identifiers on the fly, if they don't
+ * exist yet. The client can just generate its own random UUID and make its requests with that, and as long as the
+ * supplied UUID is the same in every request, everything will still work. The advantage of calling this endpoint is
+ * that the ACS user is created ahead of time, giving the identity time to propagate within ACS. This may or may not
+ * make the first call slightly more reliable and help to reduce 500-errors from within ACS encountered while
+ * establishing the call.
+ *
+ * @returns A 200-response with the userId the new user can use to contact the service.
+ */
+export const registerUser: Handler = async (_) => {
+    const userId = randomUUID();
+    await createCommunicationUserIdentifier(getUsername(userId));
+    return response(
+        200,
+        'application/json',
+        JSON.stringify({userId})
+    );
+};
+
+// noinspection JSUnusedGlobalSymbols
+/**
  * Request a new assistance session.
  *
  * This will issue an access token for Azure Communication Services to the user that made the request (creating an
