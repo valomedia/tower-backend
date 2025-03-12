@@ -148,15 +148,54 @@ Example response:
 }
 ```
 
+### `POST /registerUser`
+
+This is called by the end-user apps when the user first opens them. The endpoint will create an identity for the 
+user with a random UUID. It will return the UUID to the client, which the client will then pass along in all further 
+requests to the backend. Since the UUID can be used without further authentication and can be used to retrieve some 
+information about the user (such as when and for how long the user has called), it should be treated as moderately 
+sensitive.
+
+Response format:
+
+```
+{
+    userId: UUID
+}
+```
+
+Example response:
+
+```json
+{
+    "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
+} 
+```
+
 ### `POST /requestAssistance`
 
 This is called by the end-user apps to add a new request to the queue. This will issue an access token for Azure 
-Communication Services to the user that made the request (creating an identity for the user if none exists yet). It 
-will then add the user's identity to the queue to be picked up by an assistant. If this is called twice using the 
-same user account, the new request will replace the old one (the assumption here being that the user lost the 
-connection and is retrying). This will return a user id and token to use to connect to ACS, along with the expiry 
-time of the token, and an interval in seconds for how often to call the `/awaitAssistance`-endpoint to keep the 
-request alive.
+Communication Services to the user whose ID is specified in the request. It will then add the user's identity to 
+the queue to be picked up by an assistant. If this is called twice using the same user id, the new request will 
+replace the old one (the assumption here being that the user lost the connection and is retrying). This will return 
+an ACS user id and token to use to connect to ACS, along with the expiry time of the token, and an interval in 
+seconds for how often to call the `/awaitAssistance`-endpoint to keep the request alive.
+
+Request format:
+
+```
+{
+    userId: UUID
+}
+```
+
+Example request:
+
+```json
+{
+    "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
+} 
+```
 
 Response format:
 
@@ -190,15 +229,33 @@ Example response:
 ### `POST /awaitAssistance`
 
 This is called repeatedly by the end-user apps to keep the assistance request active while waiting for an assistant 
-to respond. Which assistance request to update is automatically determined from the identity of the user account 
-making the request. If the client fails to contact this endpoint, the request will time out and be removed by the 
-backend. This is done to reduce the number of times an assistant will respond to a request, just to find that the 
-user has lost the connection while waiting.
+to respond. If the client fails to contact this endpoint, the request will time out and be removed by the backend. 
+This is done to reduce the number of times an assistant will respond to a request, just to find that the user has 
+lost the connection while waiting.
 
-This will send a 200-response if the request was successfully updated. A 404-response will be returned if the 
+The client specifies the id of the user who is waiting to be assisted in the request. Since there can only be one 
+assistance request per user at any given time, this is sufficient to determine the assistance request to update.
+
+The endpoint will send a 200-response if the request was successfully updated. A 404-response will be returned if the 
 request could not be found. The latter could mean that something has gone wrong, but it can also occur when an 
 assistant has already accepted the assistance request and is in the process of establishing a connection. Because of 
 this, clients should wait some time before giving up when they get a 404-response from this endpoint.
+
+Request format:
+
+```
+{
+    userId: UUID
+}
+```
+
+Example request:
+
+```json
+{
+    "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
+} 
+```
 
 ### `POST /cancelAssistance`
 
@@ -206,8 +263,27 @@ This can be called by the end-user apps to indicate to the backend that the user
 assistant. The backend will then remove the assistance request for the user making the call from the list of open 
 assistance requests.
 
+The client specifies the id of the user who no longer wants to be assisted in the request. Since there can only be one
+assistance request per user at any given time, this is sufficient to determine the assistance request to remove.
+
 This will return a 200-response if the request was successfully removed. It will return a 404-response if the 
 assistance request could not be found.
+
+Request format:
+
+```
+{
+    userId: UUID
+}
+```
+
+Example request:
+
+```json
+{
+    "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
+} 
+```
 
 ### `GET /assistanceToken`
 
