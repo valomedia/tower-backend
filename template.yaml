@@ -34,6 +34,10 @@ Parameters:
     Description: Days where the normal opening hours don't apply
     Default: ""
     Type: String
+  HoursDescription:
+    Description: Human-readable description for the opening hours.
+    Default: ""
+    Type: String
   Tz:
     Description: The time zone to use for the opening hours
     Default: ""
@@ -55,6 +59,7 @@ Globals:
         HOURS: !Ref Hours
         EXTRA_HOURS: !Ref ExtraHours
         HOLIDAYS: !Ref Holidays
+        HOURS_DESCRIPTION: !Ref HoursDescription
         TZ: !Ref Tz
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
