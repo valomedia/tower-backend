@@ -129,7 +129,8 @@ Response format:
     openingHours: {
         time: string,
         status: "open"|"closed",
-        schedule: {[key: string]: string}
+        schedule: {[key: string]: string},
+        description: string
     }
 }
 ```
