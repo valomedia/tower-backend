@@ -17,7 +17,20 @@ const { spawnSync } = require('child_process');
 
 const { spawnOrFail } = require('./lib');
 
-let region, bucket, stack, stage, authUrl, allowOrigin, communicationServicesEndpoint, communicationServicesAccesskey;
+let
+    region,
+    bucket,
+    stack,
+    stage,
+    authUrl,
+    allowOrigin,
+    communicationServicesEndpoint,
+    communicationServicesAccesskey,
+    hours,
+    extraHours,
+    holidays,
+    hoursDescription,
+    tz;
 
 let disablePrintingLogs = false;
 let env = 'development';
@@ -107,6 +120,7 @@ function loadEnv() {
     hours = process.env.HOURS;
     extraHours = process.env.EXTRA_HOURS;
     holidays = process.env.HOLIDAYS;
+    hoursDescription = process.env.HOURS_DESCRIPTION;
     tz = process.env.TZ;
 
     if (hours && !hours.match(/^(((\d{4}\/\d{4},)*\d{4}\/\d{4})?:){6}((\d{4}\/\d{4},)*\d{4}\/\d{4})?$/)) {
@@ -159,10 +173,10 @@ let parameterOverrides = [
     hours && `Hours=${hours}`,
     extraHours && `ExtraHours=${extraHours}`,
     holidays && `Holidays=${holidays}`,
+    hoursDescription && `"HoursDescription='${hoursDescription}'"`,
     tz && `Tz=${tz}`
 ]
-    .filter(Boolean)
-    .join(' ');
+    .filter(Boolean);
 spawnOrFail(
     'sam',
     [
@@ -172,7 +186,7 @@ spawnOrFail(
         '--stack-name',
         stack,
         '--parameter-overrides',
-        parameterOverrides,
+        ...parameterOverrides,
         '--capabilities',
         'CAPABILITY_IAM',
         '--region',

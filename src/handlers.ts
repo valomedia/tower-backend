@@ -47,6 +47,7 @@ const extraHours = process.env.EXTRA_HOURS!.split(",").map(interval => {
     return [date + "T" + startTime, date + "T" + endTime];
 });
 const holidays = process.env.HOLIDAYS!.split(",");
+const hoursDescription = process.env.HOURS_DESCRIPTION;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
@@ -117,7 +118,8 @@ export const index: Handler = async (_) => {
                         )
                         .join(', ')
                     )
-                    .reduce((acc, x, i) => ({...acc, [dates[i]]: x}), {})
+                    .reduce((acc, x, i) => ({...acc, [dates[i]]: x}), {}),
+                description: hoursDescription
             }
         })
     );
