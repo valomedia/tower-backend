@@ -203,8 +203,10 @@ export const awaitAssistance: Handler = async (event) => {
     console.info(`User ${userId} is waiting for assistance`);
     const username = getUsername(userId);
     const user = {username, ...(await getOrCreateCommunicationUserIdentifier(username))};
+    const position = (await listAssistanceRequests())
+        .findIndex(assistanceRequest => assistanceRequest.user.username === user.username);
     return await updateAssistanceRequest(user)
-        ? response(200, 'application/json', '{}')
+        ? response(200, 'application/json', JSON.stringify({position}))
         : response(404, 'application/json', JSON.stringify({message: 'Assistance request not found'}));
 };
 
