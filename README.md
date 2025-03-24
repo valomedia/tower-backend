@@ -252,6 +252,11 @@ request could not be found. The latter could mean that something has gone wrong,
 assistant has already accepted the assistance request and is in the process of establishing a connection. Because of 
 this, clients should wait some time before giving up when they get a 404-response from this endpoint.
 
+In a 200-response, the backend will include the position of the user in the queue of assistance requests waiting to be
+picked up. This position is zero-indexed. This means that it is equal to the number of waiting users that will be 
+served ahead of the user making the request. This value just reflects the number of users waiting to be assisted. 
+Ongoing calls are not included in the count.
+
 Request format:
 
 ```
@@ -266,6 +271,22 @@ Example request:
 {
     "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
 } 
+```
+
+Response format:
+
+```
+{
+    position: number
+}
+```
+
+Example response:
+
+```json
+{
+    "position": 0
+}
 ```
 
 ### `POST /cancelAssistance`
