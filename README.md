@@ -89,22 +89,27 @@ The regular opening hours for each day of the week, starting with Sunday. Days a
 multiple time intervals for the same day are separated by a comma. Each time interval is specified by a start and end
 time, each formatted as hhmm, separated by a slash.
 
+If this is used, it must contain exactly six colon characters (as field-separators between the seven days). If this 
+is left empty, it will turn the whole opening hours system off (always showing as open, but without a schedule). To 
+specify `EXTRA_HOURS` without any regular hours, set `HOURS` to `::::::`.
+
 ### `EXTRA_HOURS`
 
 This is comma-separated list of time intervals, each formatted as YYYY-MM-DDThh:mm/hh:mm. The end time must be
-after the start time (you can not have an interval that crosses midnight).
+after the start time (you can not have an interval that crosses midnight). This is ignored if `HOURS` is unset.
 
 ### `HOLIDAYS`
 
-This is a comma-separated list of dates where the regular opening hours don't apply, each formatted as YYYY-MM-DD.
+This is a comma-separated list of dates where the regular opening hours don't apply, each formatted as YYYY-MM-DD. 
+This is ignored if `HOURS` is unset.
 
 ### `HOURS_DESCRIPTION`
 
-This is a string describing the opening hours in a human-readable way.
+This is a string describing the opening hours in a human-readable way. This is ignored if `HOURS` is unset.
 
 ### `TZ`
 
-Timezone to use for opening hours.
+Timezone to use for opening hours. If this is unset, the server's timezone will be used.
 
 ## Api
 
