@@ -46,7 +46,7 @@ const extraHours = process.env.EXTRA_HOURS!.split(",").map(interval => {
     const [date, startTime, endTime] = interval.split(/[\/T]/);
     return [date + "T" + startTime, date + "T" + endTime];
 });
-const holidays = process.env.HOLIDAYS!.split(",");
+const holidays = process.env.HOLIDAYS!.split(",").filter(Boolean);
 const hoursDescription = process.env.HOURS_DESCRIPTION!;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
