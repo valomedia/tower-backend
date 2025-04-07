@@ -37,17 +37,19 @@ const communicationUserIdsTableName = process.env.COMMUNICATION_USER_IDS_TABLE_N
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
-const hours = process.env.HOURS!.split(":").map(intervals => intervals
-    .split(",")
-    .filter(Boolean)
-    .map(interval => interval.split("/").map(time => time.slice(0, 2) + ":" + time.slice(-2)))
-);
-const extraHours = process.env.EXTRA_HOURS!.split(",").map(interval => {
+const hours = process.env.HOURS
+    ? process.env.HOURS.split(":").map(intervals => intervals
+        .split(",")
+        .filter(Boolean)
+        .map(interval => interval.split("/").map(time => time.slice(0, 2) + ":" + time.slice(-2)))
+    )
+    : undefined;
+const extraHours = process.env.EXTRA_HOURS!.split(",").filter(Boolean).map(interval => {
     const [date, startTime, endTime] = interval.split(/[\/T]/);
     return [date + "T" + startTime, date + "T" + endTime];
 });
-const holidays = process.env.HOLIDAYS!.split(",");
-const hoursDescription = process.env.HOURS_DESCRIPTION;
+const holidays = process.env.HOLIDAYS!.split(",").filter(Boolean);
+const hoursDescription = process.env.HOURS_DESCRIPTION!;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
@@ -107,19 +109,22 @@ export const index: Handler = async (_) => {
             apiVersion: API_VERSION,
             openingHours: {
                 time: ('' + now.getHours()).padStart(2, '0') + ':' + ('' + now.getMinutes()).padStart(2, '0'),
-                status: openingHours[0].some(([start, end]) => start < now && now < end) ? 'open' : 'closed',
-                schedule: openingHours
-                    .map(intervals => intervals
-                        .map(interval => interval
-                            .map(date =>
-                                ('' + date.getHours()).padStart(2, '0') + ':' + ('' + date.getMinutes()).padStart(2, '0')
+                status: (!hours || openingHours[0].some(([start, end]) => start < now && now < end))
+                    ? 'open' : 'closed',
+                schedule: hours
+                    ? openingHours
+                        .map(intervals => intervals
+                            .map(interval => interval
+                                .map(date =>
+                                    ('' + date.getHours()).padStart(2, '0') + ':' + ('' + date.getMinutes()).padStart(2, '0')
+                                )
+                                .join('-')
                             )
-                            .join('-')
+                            .join(', ')
                         )
-                        .join(', ')
-                    )
-                    .reduce((acc, x, i) => ({...acc, [dates[i]]: x}), {}),
-                description: hoursDescription
+                        .reduce((acc, x, i) => ({...acc, [dates[i]]: x}), {})
+                    : {},
+                description: hours ? hoursDescription : ""
             }
         })
     );
@@ -572,7 +577,7 @@ const response = (statusCode: number, contentType: string, body: any, isBase64En
  * @returns A list of time intervals, each specified by a tuple of a start and end Date.
  */
 const calculateOpeningHours = (date: string): Date[][] => [
-    !holidays.includes(date) && hours[(new Date(date)).getUTCDay()].map(x => x.map(y => date + "T" + y)),
+    !holidays.includes(date) && hours && hours[(new Date(date)).getUTCDay()].map(x => x.map(y => date + "T" + y)),
     extraHours.filter(([x]) => x.startsWith(date))
 ]
     .flat()

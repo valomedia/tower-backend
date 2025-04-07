@@ -164,17 +164,17 @@ console.log('\nDeploying serverless application');
 console.log(`Deploying to stage ${stage} of stack ${stack}`);
 console.log(`Using auth url ${authUrl}, ACS endpoint ${communicationServicesEndpoint}`);
 let parameterOverrides = [
-    `Region=${region}`,
-    `StageName=${stage}`,
-    `AuthUrl=${authUrl}`,
-    allowOrigin && `AllowOrigin=${allowOrigin}`,
-    `CommunicationServicesEndpoint=${communicationServicesEndpoint}`,
-    `CommunicationServicesAccesskey=${communicationServicesAccesskey}`,
-    hours && `Hours=${hours}`,
-    extraHours && `ExtraHours=${extraHours}`,
-    holidays && `Holidays=${holidays}`,
-    hoursDescription && `"HoursDescription='${hoursDescription}'"`,
-    tz && `Tz=${tz}`
+    `"Region='${region}'"`,
+    `"StageName='${stage}'"`,
+    `"AuthUrl='${authUrl}'"`,
+    `"AllowOrigin='${allowOrigin || ''}'"`,
+    `"CommunicationServicesEndpoint='${communicationServicesEndpoint}'"`,
+    `"CommunicationServicesAccesskey='${communicationServicesAccesskey}'"`,
+    `"Hours='${hours || ''}'"`,
+    `"ExtraHours='${extraHours || ''}'"`,
+    `"Holidays='${holidays || ''}'"`,
+    `"HoursDescription='${hoursDescription || ''}'"`,
+    `"Tz='${tz || ''}'"`
 ]
     .filter(Boolean);
 spawnOrFail(
