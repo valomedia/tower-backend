@@ -74,6 +74,8 @@ const ASSISTANCE_REQUEST_KEEPALIVE_TIMEOUT_SECONDS: number = 30;
 
 const ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES: number = 120;
 
+const ASSISTANCE_TOKEN_LIFETIME_MINUTES: number = 1440;
+
 const NUMBER_OF_DAYS_OF_OPENING_HOURS_RETURNED_BY_INDEX_ENDPOINT: number = 8;
 
 const BACKEND_VERSION: string = JSON.parse(fs.readFileSync('package.json', 'utf-8')).version;
@@ -257,7 +259,10 @@ export const cancelAssistance: Handler = async (event) => {
  */
 export const assistanceToken: Handler = async (event) => {
     const username = event.requestContext.authorizer.principalId;
-    const userToken = await getUserToken(username, ['voip']);
+    const userToken = await getUserToken(
+        username,
+        ['voip'],
+        {tokenExpiresInMinutes: ASSISTANCE_TOKEN_LIFETIME_MINUTES});
     return response(200, 'application/json', JSON.stringify({userToken}));
 };
 
