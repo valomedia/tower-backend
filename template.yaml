@@ -322,6 +322,36 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /beginAssistance
             Method: POST
+  TowerBackendCreateImageUploadUrl:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.createImageUploadUrl
+      CodeUri: build/
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref UploadBucket
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /createImageUploadUrl
+            Method: POST
+  TowerBackendCreateImageDownloadUrl:
+    Type: AWS::Serverless:Function
+    Properties:
+      Handler: handlers.createImageDownloadUrl
+      CodeUri: build/
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref UploadBucket
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /createImageDownloadUrl
+            Method: POST
   BasicAuthLambda:
     Type: AWS::Serverless::Function
     Properties:

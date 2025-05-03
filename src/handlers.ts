@@ -27,8 +27,10 @@ import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
 import * as fs from 'node:fs';
 import { UUID, randomUUID } from 'node:crypto';
 
-// Meetings with users waiting for an assistant to join.
+AWS.config.update({ region: process.env.AWS_REGION! });
+
 const ddb = new AWS.DynamoDB();
+const s3 = new AWS.S3();
 
 // Read environment.
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
@@ -50,6 +52,7 @@ const extraHours = process.env.EXTRA_HOURS!.split(",").filter(Boolean).map(inter
 });
 const holidays = process.env.HOLIDAYS!.split(",").filter(Boolean);
 const hoursDescription = process.env.HOURS_DESCRIPTION!;
+const uploadBucket = process.env.UPLOAD_BUCKET!;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
@@ -81,6 +84,12 @@ const NUMBER_OF_DAYS_OF_OPENING_HOURS_RETURNED_BY_INDEX_ENDPOINT: number = 8;
 const BACKEND_VERSION: string = JSON.parse(fs.readFileSync('package.json', 'utf-8')).version;
 
 const API_VERSION: string = BACKEND_VERSION.match(/\d+\.\d+/)![0];
+
+const UPLOAD_KEY_ID_LENGTH = 8;
+
+const SIGNED_UPLOAD_URL_EXPIRATION_SECONDS = 300;
+
+const SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS = ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES * 60;
 
 /*
  * Handlers
@@ -304,6 +313,60 @@ export const beginAssistance: Handler = async (event) => {
     console.info(`Assistant ${username} will assist ${assistanceRequest.user.username}`);
     await logAssistance(assistanceRequest.user.username, username, assistanceRequest.startDateTime, new Date());
     return response(200, 'application/json', JSON.stringify({assistanceRequest}));
+};
+
+/**
+ * Create a single use file-upload url.
+ *
+ * This will create a signed url with a random key, allowing the end-user app to upload an image.
+ *
+ * @param _
+ *
+ * @return A 200-response with the new file key, the signed url and its expiration timestamp.
+ */
+export const createImageUploadUrl: Handler = async (_) => {
+    const randomId = Math.floor(Math.random() * 10 ** UPLOAD_KEY_ID_LENGTH);
+    const key = `${randomId.toString().padStart(8, "0")}.jpeg`;
+    const expiresOn = (new Date(Date.now() + SIGNED_UPLOAD_URL_EXPIRATION_SECONDS * 1000)).toISOString();
+
+    // Get signed url from S3.
+    console.info(`Creating signed upload url for ${key} in bucket ${uploadBucket}, expiring ${expiresOn}.`);
+    const uploadUrl = await s3.getSignedUrlPromise('putObject', {
+        Bucket: uploadBucket,
+        Key: key,
+        Expires: SIGNED_UPLOAD_URL_EXPIRATION_SECONDS,
+        ContentType: 'image/jpeg'
+    });
+
+    return response(200, 'application/json', JSON.stringify({uploadUrl, key, expiresOn}));
+};
+
+/**
+ * Create a single use file-download url.
+ * 
+ * This will create a signed url for downloading the image with a given key.
+ * 
+ * @param event The event object containing the request body with the key parameter needed for the request.
+ * 
+ * @return A 200-response with the signed url and its expiration timestamp.
+ */
+export const createImageDownloadUrl: Handler = async (event) => {
+    const key = request(event)?.key;
+    const expiresOn = (new Date(Date.now() + SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS * 1000)).toISOString();
+
+    if (!key) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: key' }));
+    }
+
+    // Get signed url from S3.
+    console.info(`Creating signed download url for ${key} in bucket ${uploadBucket}, expiring ${expiresOn}.`);
+    const downloadUrl = await s3.getSignedUrlPromise('getObject', {
+        Bucket: uploadBucket,
+        Key: key,
+        Expires: SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS,
+    });
+
+    return response(200, 'application/json', JSON.stringify({downloadUrl, expiresOn}));
 };
 
 // noinspection JSUnusedGlobalSymbols
