@@ -61,6 +61,7 @@ Globals:
         HOLIDAYS: !Ref Holidays
         HOURS_DESCRIPTION: !Ref HoursDescription
         TZ: !Ref Tz
+        UPLOAD_BUCKET: !Ref UploadBucket
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1
@@ -91,6 +92,24 @@ Resources:
               WWW-Authenticate: "'Basic'"
           ResponseTemplates:
             "application/json": {"message": "Unauthorized"}
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - HEAD
+            AllowedOrigins:
+              - !Ref AllowOrigin
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeletionRule
+            Status: Enabled
+            ExpirationInDays: 1
   AssistanceRequests:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
