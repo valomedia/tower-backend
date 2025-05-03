@@ -43,7 +43,7 @@ also be found in `.env`, `.env.development` and `.env.production`.
 
 ### `AWS_REGION`
 
-This is the AWS region the SAM-Stack and S3 bucket will be created in.
+This is the AWS region the application will be deployed to.
 
 ### `AWS_S3_BUCKET`
 
@@ -412,5 +412,57 @@ Example response:
         },
         "startDateTime": "2025-01-08T19:27:59.759Z"
     }
+}
+```
+
+### `POST /createImageUploadUrl`
+
+This will create a single-use URL the customer's app can use to upload an image to an S3-bucket. To prevent abuse, there 
+isn't an endpoint the end-user apps can use to freely upload data. Instead, when the assistant wants to take a photo,
+the app of the assistant will use this endpoint to generate an upload link that is only valid once.This upload link 
+is then provided to user's app, so it can upload the photo.The endpoint will return the `uploadURL`, along with a `key`
+that can be used to get a download url for the ressource later and the date the upload URL `expiresOn`.
+
+Response format:
+
+```
+{
+    uploadUrl: string,
+    key: string,
+    expiresOn: string
+}
+```
+
+Example response:
+
+```json
+{
+    "uploadUrl": "…",
+    "key": "25058120.jpeg",
+    "expiresOn": "2025-05-04T16:55:51.962Z"
+}
+```
+
+### `POST /createImageDownloadUrl`
+
+This will create a URL the app of the assistant can use to access the photo uploaded by a user. For this, the `key` 
+returned by the `/createImageUploadUrl`-endpoint needs to be provided. The endpoint will return the `downloadUrl`, 
+along with the date the download URL `expiresOn`.
+
+Response format:
+
+```
+{
+    downloadUrl: string,
+    expiresOn: string
+}
+```
+
+Example response:
+
+```json
+{
+    "downloadUrl": "…",
+    "expiresOn": "2025-05-04T18:50:53.927Z"
 }
 ```
