@@ -27,9 +27,13 @@ production configuration (aws-cli needs to be installed and logged in). All AWS 
 When the script finishes, it outputs the url to the newly deployed backend, which can be used as is, or assigned to a
 custom domain using the AWS API Gateway Console.
 
-During each deployment, a new temporary object will be created in an S3-bucket provided on the command line. The bucket
-is not emptied automatically, so you might have to empty it manually every once in a while (or set a deletion rule), to
-avoid unnecessary charges.
+During each deployment, a new temporary object will be created in an S3-bucket provided using the `AWS_S3_BUCKET` 
+configuration option. This object contains the packaged application. It is not needed during runtime and can be 
+deleted after the application deployment has finished. However, it can be useful to have old packages, since it 
+makes it easier to roll back changes. For this reason, the bucket is not emptied automatically. You might want to 
+empty it manually every once in a while (or set a deletion rule), to avoid unnecessary charges. This only applies to 
+the bucket used for deployment (the one provided by name in the configuration options). Any buckets the application 
+needs at runtime will be created with randomized names and their contents will be cleaned up automatically.
 
 You can pass `-l`, or `--disable-printing-logs` to make the output of the deployment script less verbose.
 
@@ -43,13 +47,16 @@ also be found in `.env`, `.env.development` and `.env.production`.
 
 ### `AWS_REGION`
 
-This is the AWS region the SAM-Stack and S3 bucket will be created in.
+This is the AWS region the application will be deployed to.
 
 ### `AWS_S3_BUCKET`
 
-This is the name of a bucket that the application will be packaged in.  If the bucket doesn't exist, it will be 
-automatically created.  During deployment, the source will be copied to a new object in this bucket, then deployed to
-SAM from the bucket.  The object will no longer be needed afterward, but the bucket is not emptied automatically.
+This is the name of a bucket that the application will be packaged in. If the bucket doesn't exist, it will be 
+automatically created. During deployment, the source will be copied to a new object in this bucket, then deployed to
+SAM from the bucket. The object will no longer be needed afterward, but the bucket is not emptied automatically to 
+allow for rollbacks to previously deployed versions when something goes wrong. This configuration option only 
+configures which bucket is used for deployment, it does not affect any buckets used by the application at runtime, 
+whose names will be chosen automatically and have a randomized suffix for uniqueness.
 
 ### `AWS_CLOUDFORMATION_STACK`
 
@@ -412,5 +419,73 @@ Example response:
         },
         "startDateTime": "2025-01-08T19:27:59.759Z"
     }
+}
+```
+
+### `POST /createImageUploadUrl`
+
+This will create a single-use URL the customer's app can use to upload an image to an S3-bucket. To prevent abuse, there 
+isn't an endpoint the end-user apps can use to freely upload data. Instead, when the assistant wants to take a photo,
+the app of the assistant will use this endpoint to generate an upload link that is only valid once.This upload link 
+is then provided to user's app, so it can upload the photo.The endpoint will return the `uploadURL`, along with a `key`
+that can be used to get a download url for the ressource later and the date the upload URL `expiresOn`.
+
+Response format:
+
+```
+{
+    uploadUrl: string,
+    key: string,
+    expiresOn: string
+}
+```
+
+Example response:
+
+```json
+{
+    "uploadUrl": "…",
+    "key": "25058120.jpeg",
+    "expiresOn": "2025-05-04T16:55:51.962Z"
+}
+```
+
+### `POST /createImageDownloadUrl`
+
+This will create a URL the app of the assistant can use to access the photo uploaded by a user. For this, the `key` 
+returned by the `/createImageUploadUrl`-endpoint needs to be provided. The endpoint will return the `downloadUrl`, 
+along with the date the download URL `expiresOn`.
+
+Request format:
+
+```
+{
+    key: string
+}
+```
+
+Example request:
+
+```json
+{
+    "key": "25058120.jpeg"
+}
+```
+
+Response format:
+
+```
+{
+    downloadUrl: string,
+    expiresOn: string
+}
+```
+
+Example response:
+
+```json
+{
+    "downloadUrl": "…",
+    "expiresOn": "2025-05-04T18:50:53.927Z"
 }
 ```

@@ -61,6 +61,7 @@ Globals:
         HOLIDAYS: !Ref Holidays
         HOURS_DESCRIPTION: !Ref HoursDescription
         TZ: !Ref Tz
+        UPLOAD_BUCKET: !Ref UploadBucket
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1
@@ -91,6 +92,24 @@ Resources:
               WWW-Authenticate: "'Basic'"
           ResponseTemplates:
             "application/json": {"message": "Unauthorized"}
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - HEAD
+            AllowedOrigins:
+              - !Ref AllowOrigin
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeletionRule
+            Status: Enabled
+            ExpirationInDays: 1
   AssistanceRequests:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
@@ -302,6 +321,36 @@ Resources:
           Properties:
             RestApiId: !Ref TowerApi
             Path: /beginAssistance
+            Method: POST
+  TowerBackendCreateImageUploadUrl:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.createImageUploadUrl
+      CodeUri: build/
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref UploadBucket
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /createImageUploadUrl
+            Method: POST
+  TowerBackendCreateImageDownloadUrl:
+    Type: AWS::Serverless:Function
+    Properties:
+      Handler: handlers.createImageDownloadUrl
+      CodeUri: build/
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref UploadBucket
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /createImageDownloadUrl
             Method: POST
   BasicAuthLambda:
     Type: AWS::Serverless::Function
