@@ -456,6 +456,22 @@ This will create a URL the app of the assistant can use to access the photo uplo
 returned by the `/createImageUploadUrl`-endpoint needs to be provided. The endpoint will return the `downloadUrl`, 
 along with the date the download URL `expiresOn`.
 
+Request format:
+
+```
+{
+    key: string
+}
+```
+
+Example request:
+
+```json
+{
+    "key": "25058120.jpeg"
+}
+```
+
 Response format:
 
 ```
