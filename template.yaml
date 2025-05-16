@@ -338,7 +338,7 @@ Resources:
             Path: /createImageUploadUrl
             Method: POST
   TowerBackendCreateImageDownloadUrl:
-    Type: AWS::Serverless:Function
+    Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.createImageDownloadUrl
       CodeUri: build/
