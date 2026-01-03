@@ -1,6 +1,6 @@
 {
   "name": "tower-backend",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "AWS SAM backend for Tower",
   "scripts": {
     "build": "node scripts/build.js",
