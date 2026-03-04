@@ -7,6 +7,9 @@
 //  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 
+// NODE_ENV should always be production.
+process.env.NODE_ENV = 'production';
+
 // Makes the script crash on unhandled rejections instead of silently ignoring them. In the future, promise rejections
 // that are not handled will terminate the Node.js process with a non-zero exit code.
 process.on('unhandledRejection', err => {
@@ -21,20 +24,6 @@ const { spawnOrFail } = require('./lib');
 
 fs.copyFileSync(paths.lambdaPackageJson, path.resolve(paths.build, 'package.json'));
 fs.copyFileSync(paths.lambdaPackageLockJson, path.resolve(paths.build, 'package-lock.json'));
-spawnOrFail(
-    'npm',
-    ['install'],
-    {
-        cwd: paths.src,
-        env: {...process.env, NODE_ENV: 'development'}
-    },
-    false);
-spawnOrFail(
-    'npm',
-    ['install'],
-    {
-        cwd: paths.build,
-        env: {...process.env, NODE_ENV: 'production'}
-    },
-    false);
+spawnOrFail('npm', ['install'], {cwd: paths.src}, false);
+spawnOrFail('npm', ['install'], {cwd: paths.build,}, false);
 spawnOrFail('npx', ['tsc']);
