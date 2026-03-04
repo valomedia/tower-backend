@@ -7,6 +7,9 @@
 //  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 
+// NODE_ENV should always be production.
+process.env.NODE_ENV = 'production';
+
 // Makes the script crash on unhandled rejections instead of silently ignoring them. In the future, promise rejections
 // that are not handled will terminate the Node.js process with a non-zero exit code.
 process.on('unhandledRejection', err => {
@@ -99,7 +102,6 @@ function parseArgs() {
 }
 
 function loadEnv() {
-    process.env.NODE_ENV = env;
     require('../config/env');
 
     for (let i of ['AWS_REGION', 'AWS_CLOUDFORMATION_STACK', 'AWS_S3_BUCKET', 'AWS_SAM_STAGE_NAME', 'AUTH_URL']) {
