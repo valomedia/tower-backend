@@ -17,10 +17,13 @@ process.on('unhandledRejection', err => {
 });
 
 const { spawnSync } = require('child_process');
+const dotenv = require('@dotenvx/dotenvx');
 
 const { spawnOrFail } = require('./lib');
+const env = require('../config/env');
 
 let
+    config,
     region,
     bucket,
     stack,
@@ -36,13 +39,12 @@ let
     tz;
 
 let disablePrintingLogs = false;
-let env = 'development';
 
 function usage() {
-    console.log(`Usage: deploy.js [--env development|production] [-l] [-h]`);
-    console.log(`Example: deploy.js --env development`);
+    console.log(`Usage: deploy.js [--env <env>] [-l] [-h]`);
+    console.log(`Example: deploy.js --config development`);
     console.log(`Options:`);
-    console.log(`  --env                        Env to deploy, 'development' or 'production', default '${env}'`);
+    console.log(`  --config                     Configuration to deploy, optional'`);
     console.log(`  -l, --disable-printing-logs  Make the output less verbose`);
     console.log(`  -h, --help                   Show help and exit`);
 }
@@ -74,8 +76,8 @@ function parseArgs() {
     let i = 0;
     while (i < args.length) {
         switch(args[i]) {
-            case '--env':
-                 env = getArgOrExit(++i, args);
+            case '--config':
+                 config = getArgOrExit(++i, args);
                  break;
             case '-h':
             case '--help':
@@ -93,16 +95,10 @@ function parseArgs() {
         }
         ++i;
     }
-
-    if (env !== 'development' && env !== 'production') {
-        console.log(`Invalid environment ${env}`);
-        usage();
-        process.exit(1);
-    }
 }
 
 function loadEnv() {
-    require('../config/env');
+    dotenv.config({ path: env(config) });
 
     for (let i of ['AWS_REGION', 'AWS_CLOUDFORMATION_STACK', 'AWS_S3_BUCKET', 'AWS_SAM_STAGE_NAME', 'AUTH_URL']) {
         if (!process.env[i].trim()) {

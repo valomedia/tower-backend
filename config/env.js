@@ -10,27 +10,17 @@ const fs = require('fs-extra');
 
 const paths = require('./paths');
 
-// Make sure that including paths.js after env.js will read .env variables.
-delete require.cache[require.resolve('./paths')];
-
-const NODE_ENV = process.env.NODE_ENV
-if (!NODE_ENV) {
-    throw new Error('The NODE_ENV environment variable is required but was not specified.');
+function env(config) {
+    return [
+        config && `${paths.secrets}.${config}`,
+        paths.secrets,
+        config && `${paths.dotenv}.${config}.local`,
+        `${paths.dotenv}.local`,
+        config && `${paths.dotenv}.${config}`,
+        paths.dotenv,
+    ]
+        .filter(Boolean)
+        .filter(fs.existsSync);
 }
 
-const dotenvFiles = [
-    `${paths.secrets}.${NODE_ENV}`,
-    NODE_ENV !== 'test' && paths.secrets,
-    `${paths.dotenv}.${NODE_ENV}.local`,
-    NODE_ENV !== 'test' && `${paths.dotenv}.local`,
-    `${paths.dotenv}.${NODE_ENV}`,
-    paths.dotenv,
-].filter(Boolean);
-
-dotenvFiles.forEach(dotenvFile => {
-    if (fs.existsSync(dotenvFile)) {
-        require('@dotenvx/dotenvx').config({
-            path: dotenvFile
-        });
-    }
-});
+module.exports = env;
