@@ -183,10 +183,19 @@ Resources:
       AttributeDefinitions:
         - AttributeName: "Username"
           AttributeType: "S"
+        - AttributeName: "Email"
+          AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
         - AttributeName: "Username"
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: "Email-index"
+          KeySchema:
+            - AttributeName: "Email"
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
   TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
