@@ -15,19 +15,19 @@ import {
     Handler,
     StatementEffect
 } from 'aws-lambda';
-import { AzureKeyCredential } from '@azure/core-auth';
-import { CommunicationUserIdentifier } from '@azure/communication-common';
+import {AzureKeyCredential} from '@azure/core-auth';
+import {CommunicationUserIdentifier} from '@azure/communication-common';
 import {
     CommunicationIdentityClient,
     GetTokenOptions,
     TokenScope
 } from '@azure/communication-identity';
-import { AssistanceRequest, User, UserToken } from './types';
-import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
+import {AssistanceRequest, User, UserProfile, UserToken} from './types';
+import {AttributeMap, QueryInput} from 'aws-sdk/clients/dynamodb';
 import * as fs from 'node:fs';
-import { UUID, randomUUID } from 'node:crypto';
+import {UUID, randomUUID} from 'node:crypto';
 
-AWS.config.update({ region: process.env.AWS_REGION! });
+AWS.config.update({region: process.env.AWS_REGION!});
 
 const ddb = new AWS.DynamoDB();
 const s3 = new AWS.S3();
@@ -154,11 +154,49 @@ export const index: Handler = async (_) => {
  * make the first call slightly more reliable and help to reduce 500-errors from within ACS encountered while
  * establishing the call.
  *
+ * @param event The event containing the optional request body with profile information (name, email, gender).
+ *
  * @returns A 200-response with the userId the new user can use to contact the service.
  */
-export const registerUser: Handler = async (_) => {
+export const registerUser: Handler = async (event) => {
     const userId = randomUUID();
-    await createCommunicationUserIdentifier(getUsername(userId));
+    const username = getUsername(userId);
+    const body = request(event);
+
+    // If profile data is provided, validate and check uniqueness
+    if (body && (body.firstName || body.lastName || body.email || body.gender || body.birthdate || body.phone)) {
+        const profile: UserProfile = {
+            firstName: body.firstName,
+            lastName: body.lastName,
+            email: body.email,
+            gender: body.gender,
+            birthdate: body.birthdate,
+            phone: body.phone
+        };
+
+        const validationError = validateUserProfile(profile);
+        if (validationError) {
+            return response(400, 'application/json', JSON.stringify({error: validationError}));
+        }
+
+        // Check email uniqueness if email is provided
+        if (profile.email) {
+            const existingUser = await getUserByEmail(profile.email);
+            if (existingUser) {
+                return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+            }
+        }
+
+        // Create the communication user identifier
+        await createCommunicationUserIdentifier(username);
+
+        // Save the profile
+        await saveUserProfile(username, profile);
+    } else {
+        // No profile data, just create the communication user identifier
+        await createCommunicationUserIdentifier(username);
+    }
+
     return response(
         200,
         'application/json',
@@ -181,7 +219,7 @@ export const registerUser: Handler = async (_) => {
 export const requestAssistance: Handler = async (event) => {
     const userId = request(event)?.userId;
     if (!isUUID(userId)) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
     }
 
     console.info(`User ${userId} is requesting assistance`);
@@ -213,12 +251,13 @@ export const requestAssistance: Handler = async (event) => {
 export const awaitAssistance: Handler = async (event) => {
     const userId = request(event)?.userId;
     if (!isUUID(userId)) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
     }
 
     console.info(`User ${userId} is waiting for assistance`);
     const username = getUsername(userId);
-    const user = {username, ...(await getOrCreateCommunicationUserIdentifier(username))};
+    const communicationUserIdentifier = await getOrCreateCommunicationUserIdentifier(username);
+    const user: User = {username, ...communicationUserIdentifier};
     const position = (await listAssistanceRequests())
         .findIndex(assistanceRequest => assistanceRequest.user.username === user.username);
     return await updateAssistanceRequest(user)
@@ -240,13 +279,15 @@ export const awaitAssistance: Handler = async (event) => {
 export const cancelAssistance: Handler = async (event) => {
     const userId = request(event)?.userId;
     if (!isUUID(userId)) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
     }
 
     console.info(`User ${userId} is giving up on getting assistance`);
     const username = getUsername(userId);
     const assistanceRequest = await deleteAssistanceRequest(username);
-    if (assistanceRequest) {await logAbandonment(username, assistanceRequest.startDateTime, new Date());}
+    if (assistanceRequest) {
+        await logAbandonment(username, assistanceRequest.startDateTime, new Date());
+    }
     return assistanceRequest
         ? response(200, 'application/json', '{}')
         : response(404, 'application/json', JSON.stringify({message: 'Assistance request not found'}));
@@ -343,11 +384,11 @@ export const createImageUploadUrl: Handler = async (_) => {
 
 /**
  * Create a single use file-download url.
- * 
+ *
  * This will create a signed url for downloading the image with a given key.
- * 
+ *
  * @param event The event object containing the request body with the key parameter needed for the request.
- * 
+ *
  * @return A 200-response with the signed url and its expiration timestamp.
  */
 export const createImageDownloadUrl: Handler = async (event) => {
@@ -355,7 +396,7 @@ export const createImageDownloadUrl: Handler = async (event) => {
     const expiresOn = (new Date(Date.now() + SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS * 1000)).toISOString();
 
     if (!key) {
-        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: key' }));
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: key'}));
     }
 
     // Get signed url from S3.
@@ -388,7 +429,7 @@ export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Prom
                 authUrl,
                 {
                     method: 'HEAD',
-                    headers: { authorization: token }
+                    headers: {authorization: token}
                 },
                 (res) => {
                     if (res.statusCode === 200) {
@@ -417,13 +458,15 @@ const AssistanceRequest = (
         DateTime,
         TTL
     }: AttributeMap
-): AssistanceRequest|undefined => {
+): AssistanceRequest | undefined => {
     if (!Username?.S
         || !CommunicationUserId?.S
         || !DateTime?.S
         || !TTL?.N
         || +TTL.N < Math.floor(Date.now() / 1000)
-    ) {return;}
+    ) {
+        return;
+    }
     return {
         user: {
             username: Username.S,
@@ -435,7 +478,7 @@ const AssistanceRequest = (
 
 const getAssistanceRequestTtl = () => {
     // Set time-to-live to two minutes, causing stale requests to be automatically removed.
-    return { N: `${Math.floor(Date.now() / 1000) + ASSISTANCE_REQUEST_KEEPALIVE_TIMEOUT_SECONDS }`};
+    return {N: `${Math.floor(Date.now() / 1000) + ASSISTANCE_REQUEST_KEEPALIVE_TIMEOUT_SECONDS}`};
 };
 
 // noinspection JSUnusedLocalSymbols
@@ -444,7 +487,7 @@ const listAssistanceRequests = async (): Promise<AssistanceRequest[]> => {
     return (queryOutput.Items || []).map(AssistanceRequest).filter((x): x is AssistanceRequest => !!x);
 };
 
-const getAssistanceRequest = async (user : User|undefined = undefined): Promise<AssistanceRequest|undefined> => {
+const getAssistanceRequest = async (user: User | undefined = undefined): Promise<AssistanceRequest | undefined> => {
     const item = user
         ? (
             await ddb.getItem({
@@ -455,9 +498,13 @@ const getAssistanceRequest = async (user : User|undefined = undefined): Promise<
             }).promise()
         ).Item
         : (await ddb.query({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}).promise()).Items?.at(0);
-    if (!item) {return;}
+    if (!item) {
+        return;
+    }
     const assistanceRequest = AssistanceRequest(item);
-    if (!assistanceRequest) {await deleteAssistanceRequest(item.Username.S!)}
+    if (!assistanceRequest) {
+        await deleteAssistanceRequest(item.Username.S!)
+    }
     return AssistanceRequest(item) || getAssistanceRequest(user);
 };
 
@@ -476,13 +523,15 @@ const createAssistanceRequest = async (user: User, startDateTime: Date = new Dat
     return {user, startDateTime}
 };
 
-const updateAssistanceRequest = async (user: User): Promise<AssistanceRequest|undefined> => {
+const updateAssistanceRequest = async (user: User): Promise<AssistanceRequest | undefined> => {
     const assistanceRequest = await getAssistanceRequest(user);
-    if (!assistanceRequest) {return;}
+    if (!assistanceRequest) {
+        return;
+    }
     return createAssistanceRequest(user, assistanceRequest.startDateTime);
 };
 
-const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequest|undefined> => {
+const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequest | undefined> => {
     const result = await ddb.deleteItem({
         TableName: assistanceRequestsTableName,
         ReturnValues: "ALL_OLD",
@@ -490,13 +539,17 @@ const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequ
             Username: {S: username}
         }
     }).promise();
-    if (!result.Attributes) {return;}
+    if (!result.Attributes) {
+        return;
+    }
     return AssistanceRequest(result.Attributes);
 };
 
-const popAssistanceRequest = async (): Promise<AssistanceRequest|undefined> => {
+const popAssistanceRequest = async (): Promise<AssistanceRequest | undefined> => {
     const assistanceRequest = await getAssistanceRequest();
-    if (!assistanceRequest) {return;}
+    if (!assistanceRequest) {
+        return;
+    }
     return (await deleteAssistanceRequest(assistanceRequest.user.username))
         ? assistanceRequest
         : popAssistanceRequest();
@@ -528,24 +581,147 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
 };
 
 /**
+ * Find a user by their email address.
+ *
+ * @param email  The email address to search for (will be normalized to lowercase).
+ *
+ * @return The username if found, undefined otherwise.
+ */
+const getUserByEmail = async (email: string): Promise<string | undefined> => {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    if (!normalizedEmail) {
+        return undefined;
+    }
+
+    const result = await ddb.query({
+        TableName: communicationUserIdsTableName,
+        IndexName: 'Email-index',
+        KeyConditionExpression: 'Email = :email',
+        ExpressionAttributeValues: {
+            ':email': {S: normalizedEmail}
+        },
+        Limit: 1
+    }).promise();
+
+    return result.Items && result.Items.length > 0
+        ? result.Items[0].Username?.S
+        : undefined;
+};
+
+/**
+ * Get user profile information from the database.
+ *
+ * @param username  The username to look up the profile for.
+ *
+ * @return The UserProfile for the user, if any profile data exists.
+ */
+const getUserProfile = async (username: string): Promise<UserProfile | undefined> => {
+    const item = (
+        await ddb
+            .getItem({
+                TableName: communicationUserIdsTableName,
+                Key: {
+                    Username: {S: username}
+                }
+            })
+            .promise()
+    ).Item;
+
+    if (!item) {
+        return undefined;
+    }
+
+    const profile: UserProfile = {
+        ...(item.FirstName?.S && {firstName: item.FirstName.S}),
+        ...(item.LastName?.S && {lastName: item.LastName.S}),
+        ...(item.Email?.S && {email: item.Email.S}),
+        ...(item.Gender?.S && {gender: item.Gender.S}),
+        ...(item.Birthdate?.S && {birthdate: item.Birthdate.S}),
+        ...(item.Phone?.S && {phone: item.Phone.S})
+    };
+
+    return Object.keys(profile).length > 0 ? profile : undefined;
+};
+
+/**
+ * Save or update user profile information in the database.
+ *
+ * @param username  The username to save the profile for.
+ * @param profile   The profile information to save.
+ */
+const saveUserProfile = async (username: string, profile: UserProfile): Promise<void> => {
+    const updateExpressions: string[] = [];
+    const expressionAttributeNames: { [key: string]: string } = {};
+    const expressionAttributeValues: { [key: string]: AWS.DynamoDB.AttributeValue } = {};
+
+    if (profile.firstName !== undefined) {
+        updateExpressions.push('#firstName = :firstName');
+        expressionAttributeNames['#firstName'] = 'FirstName';
+        expressionAttributeValues[':firstName'] = {S: profile.firstName};
+    }
+    if (profile.lastName !== undefined) {
+        updateExpressions.push('#lastName = :lastName');
+        expressionAttributeNames['#lastName'] = 'LastName';
+        expressionAttributeValues[':lastName'] = {S: profile.lastName};
+    }
+    if (profile.email !== undefined) {
+        // Normalize email to lowercase for case-insensitive uniqueness
+        const normalizedEmail = profile.email.toLowerCase().trim();
+        updateExpressions.push('#email = :email');
+        expressionAttributeNames['#email'] = 'Email';
+        expressionAttributeValues[':email'] = {S: normalizedEmail};
+    }
+    if (profile.gender !== undefined) {
+        updateExpressions.push('#gender = :gender');
+        expressionAttributeNames['#gender'] = 'Gender';
+        expressionAttributeValues[':gender'] = {S: profile.gender};
+    }
+    if (profile.birthdate !== undefined) {
+        updateExpressions.push('#birthdate = :birthdate');
+        expressionAttributeNames['#birthdate'] = 'Birthdate';
+        expressionAttributeValues[':birthdate'] = {S: profile.birthdate};
+    }
+    if (profile.phone !== undefined) {
+        updateExpressions.push('#phone = :phone');
+        expressionAttributeNames['#phone'] = 'Phone';
+        expressionAttributeValues[':phone'] = {S: profile.phone};
+    }
+
+    if (updateExpressions.length === 0) {
+        return;
+    }
+
+    await ddb.updateItem({
+        TableName: communicationUserIdsTableName,
+        Key: {
+            Username: {S: username}
+        },
+        UpdateExpression: 'SET ' + updateExpressions.join(', '),
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues
+    }).promise();
+};
+
+/**
  * Get an existing communication user id from the database for a given user.
  *
  * @param username  The user to look up the communication user id for.
  *
  * @return The CommunicationUserIdentifier for the user, if any.
  */
-const getCommunicationUserIdentifier = async (username: string): Promise<CommunicationUserIdentifier|undefined> => {
+const getCommunicationUserIdentifier = async (username: string): Promise<CommunicationUserIdentifier | undefined> => {
     const communicationUserId = (
         await ddb
             .getItem({
                 TableName: communicationUserIdsTableName,
                 Key: {
-                    Username: { S: username }
+                    Username: {S: username}
                 }
             })
             .promise()
     ).Item?.CommunicationUserId.S;
-    return communicationUserId && { communicationUserId } || undefined;
+    return communicationUserId && {communicationUserId} || undefined;
 };
 
 /**
@@ -560,8 +736,8 @@ const createCommunicationUserIdentifier = async (username: string): Promise<Comm
     await ddb.putItem({
         TableName: communicationUserIdsTableName,
         Item: {
-            Username: { S: username },
-            CommunicationUserId: { S: communicationUserIdentifier.communicationUserId }
+            Username: {S: username},
+            CommunicationUserId: {S: communicationUserIdentifier.communicationUserId}
         }
     }).promise();
     return communicationUserIdentifier;
@@ -593,8 +769,10 @@ const getOrCreateCommunicationUserIdentifier = async (username: string) => {
  * @return The access token for the customer.
  */
 const getUserToken = async (username: string, scopes: TokenScope[], options?: GetTokenOptions): Promise<UserToken> => {
-    const user = {username, ...(await getOrCreateCommunicationUserIdentifier(username))};
-    const token = await communicationIdentityClient.getToken(user, scopes, options);
+    const communicationUserIdentifier = await getOrCreateCommunicationUserIdentifier(username);
+    const profile = await getUserProfile(username);
+    const user: User = {username, ...communicationUserIdentifier, profile};
+    const token = await communicationIdentityClient.getToken(communicationUserIdentifier, scopes, options);
     console.debug(`Issued an access token with scope ${scopes} that expires at ${token.expiresOn}`);
     return {...token, user: user};
 };
@@ -623,11 +801,12 @@ const generatePolicy = (principalId: string, effect: StatementEffect): AuthRespo
     }
 });
 
-const request = ({body}: {body: string}): {[key: string]: any}|undefined => {
+const request = ({body}: { body: string }): { [key: string]: any } | undefined => {
     try {
         const result = JSON.parse(body);
         return typeof result == 'object' ? result : undefined;
-    } catch {}
+    } catch {
+    }
 };
 
 const response = (statusCode: number, contentType: string, body: any, isBase64Encoded = false) => ({
@@ -657,6 +836,45 @@ const calculateOpeningHours = (date: string): Date[][] => [
 
 const isUUID = (uuid: any): uuid is UUID =>
     typeof uuid == 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){4}[0-9a-f]{8}$/i.test(uuid);
+
+/**
+ * Validate an email address format.
+ *
+ * @param email The email address to validate.
+ *
+ * @returns True if the email has a valid format, false otherwise.
+ */
+const isValidEmail = (email: string): boolean =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+/**
+ * Validate user profile data.
+ *
+ * @param profile The profile data to validate.
+ *
+ * @returns An error message if validation fails, undefined otherwise.
+ */
+const validateUserProfile = (profile: UserProfile): string | undefined => {
+    if (profile.firstName && (profile.firstName.length < 1 || profile.firstName.length > 100)) {
+        return 'First name must be between 1 and 100 characters';
+    }
+    if (profile.lastName && (profile.lastName.length < 1 || profile.lastName.length > 100)) {
+        return 'Last name must be between 1 and 100 characters';
+    }
+    if (profile.email && !isValidEmail(profile.email)) {
+        return 'Invalid email format';
+    }
+    if (profile.gender && profile.gender.length > 50) {
+        return 'Gender must be 50 characters or less';
+    }
+    if (profile.birthdate && !/^\d{4}-\d{2}-\d{2}$/.test(profile.birthdate)) {
+        return 'Birthdate must be in YYYY-MM-DD format';
+    }
+    if (profile.phone && (profile.phone.length < 10 || profile.phone.length > 20)) {
+        return 'Phone number must be between 10 and 20 characters';
+    }
+    return undefined;
+};
 
 /**
  * Get the username for a given UUID.
