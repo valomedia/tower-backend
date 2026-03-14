@@ -6,6 +6,24 @@ AWS SAM backend for Tower.
 
 To deploy the service, configure the environment variables and execute the deploy-script.
 
+### Prerequisites
+
+For this service to work, you need to deploy Azure Communication Services to handle the actual calls, as well as a 
+system that handles authentication. The correct endpoints for both of these things are then passed as configuration 
+parameters to your actual deployment.
+
+For Instructions on how to create an Azure Communication Services resource, please have a look at the official
+[docs](https://learn.microsoft.com/en-us/azure/communication-services/quickstarts/create-communication-resource). If 
+it is legally possible for you to collect this data, you will probably also want to deploy a Log Analytics Workspace and 
+connect it with the Communication Service to give you insight into the calls. For details see the documentation on how
+to [enable logging](https://learn.microsoft.com/en-us/azure/communication-services/concepts/analytics/enable-logging)
+for Azure Communication services.
+
+For the authentication, you will need a webserver with an endpoint the backend can call to check if a user should be 
+authorized. The backend will call this endpoint for each user, providing the credentials through HTTP basic auth. If 
+the user should be authorized, the authentication server should answer `200 OK`. If the credentials are incorrect, 
+the server should usually answer `401 Unauthorized`.
+
 ### Configuration
 
 To configure the service, you will need to at a minimum supply values for the environment variables `AUTH_URL`,
