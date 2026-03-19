@@ -42,16 +42,23 @@ the project will be built automatically by the deploy-script.
 
 Use `npm run deploy` to deploy the development configuration, and `npm run deploy -- --env production` to deploy the
 production configuration (aws-cli needs to be installed and logged in). All AWS resources will be created automatically. 
-When the script finishes, it outputs the url to the newly deployed backend, which can be used as is, or assigned to a
-custom domain using the AWS API Gateway Console.
+When the script finishes, it outputs the url to the newly deployed backend.
+
+The backend can be used as is, but you will probably want to assign it a custom domain. To do this, first add a 
+certificate for the domain you want to use in AWS Certificate Manager. Most of the time you will want an 
+edge-optimized domain (meaning that CloudFront will serve requests through whichever datacenter is topologically closest
+to the user). For this to work, you need to generate the certificate in `us-east-1`. If you create it in any other 
+region, you won't be able to select it when creating your domain. Once you have a certificate, you can add the 
+custom domain name to Amazon API Gateway, update your DNS-records to point to Amazon, and configure an API mapping 
+to map the domain name to the tower-backend API.
 
 During each deployment, a new temporary object will be created in an S3-bucket provided using the `AWS_S3_BUCKET` 
-configuration option. This object contains the packaged application. It is not needed during runtime and can be 
-deleted after the application deployment has finished. However, it can be useful to have old packages, since it 
+configuration option. This object contains the packaged application. It is unnecessary during runtime and can be 
+deleted after the application deployment has finished. However, it can be useful to have old packages since it 
 makes it easier to roll back changes. For this reason, the bucket is not emptied automatically. You might want to 
-empty it manually every once in a while (or set a deletion rule), to avoid unnecessary charges. This only applies to 
+empty it manually every once in a while (or set a deletion rule) to avoid unnecessary charges. This only applies to 
 the bucket used for deployment (the one provided by name in the configuration options). Any buckets the application 
-needs at runtime will be created with randomized names and their contents will be cleaned up automatically.
+needs at runtime will be created with randomized names, and their contents will be cleaned up automatically.
 
 You can pass `-l`, or `--disable-printing-logs` to make the output of the deployment script less verbose.
 
