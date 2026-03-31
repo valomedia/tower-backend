@@ -412,6 +412,70 @@ export const createImageDownloadUrl: Handler = async (event) => {
 
 // noinspection JSUnusedGlobalSymbols
 /**
+ * Update user profile information.
+ *
+ * This endpoint allows updating an existing user's profile. For now, no authentication is required -
+ * anyone with the userId can update the profile.
+ *
+ * The user must already exist (registered via registerUser endpoint). If an email is provided, it must not
+ * be already registered by another user.
+ *
+ * @param event The event containing the request body with userId and profile fields to update.
+ *
+ * @return A 200-response on success, 404-response if user not found, or 400-response with error details if validation fails.
+ */
+export const updateUserProfile: Handler = async (event) => {
+    const body = request(event);
+    const userId = body?.userId;
+
+    if (!userId) {
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
+    }
+
+    const username = getUsername(userId);
+
+    // Check if user exists
+    const userExists = await getCommunicationUserIdentifier(username);
+    if (!userExists) {
+        return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
+    }
+
+    // Build profile from request body
+    const profile: UserProfile = {
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        gender: body.gender,
+        birthdate: body.birthdate,
+        phone: body.phone
+    };
+
+    // Validate profile
+    const validationError = validateUserProfile(profile);
+    if (validationError) {
+        return response(400, 'application/json', JSON.stringify({error: validationError}));
+    }
+
+    // Check email uniqueness if email is being updated
+    if (profile.email) {
+        const existingUser = await getUserByEmail(profile.email);
+        if (existingUser && existingUser !== username) {
+            return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+        }
+    }
+
+    // Save the updated profile
+    await saveUserProfile(username, profile);
+
+    return response(
+        200,
+        'application/json',
+        JSON.stringify({success: true})
+    );
+};
+
+// noinspection JSUnusedGlobalSymbols
+/**
  * Authorize the request based on basic authentication.
  *
  * This will throw a request's authorization token against the auth url, authorizing the request, if the response has a
