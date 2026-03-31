@@ -41,7 +41,7 @@ let
 let disablePrintingLogs = false;
 
 function usage() {
-    console.log(`Usage: deploy.js [--env <env>] [-l] [-h]`);
+    console.log(`Usage: deploy.js [--config <config>] [-l] [-h]`);
     console.log(`Example: deploy.js --config development`);
     console.log(`Options:`);
     console.log(`  --config                     Configuration to deploy, optional'`);
@@ -101,12 +101,11 @@ function loadEnv() {
     dotenv.config({ path: env(config) });
 
     for (let i of ['AWS_REGION', 'AWS_CLOUDFORMATION_STACK', 'AWS_S3_BUCKET', 'AWS_SAM_STAGE_NAME', 'AUTH_URL']) {
-        if (!process.env[i].trim()) {
+        if (!process.env[i] || !process.env[i].trim()) {
             console.log(`Missing required environment variable ${i}`);
             process.exit(1);
         }
     }
-
     region = process.env.AWS_REGION;
     bucket = process.env.AWS_S3_BUCKET;
     stack = process.env.AWS_CLOUDFORMATION_STACK;
