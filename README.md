@@ -117,7 +117,7 @@ The access key to use to connect to Azure Communication Services.
 
 ### `HOURS`
 
-The regular opening hours for each day of the week, starting with Sunday. Days are separated by a colon character and
+The regular opening hours for each day of the week, starting with Sunday. Days are separated by a colon character, and
 multiple time intervals for the same day are separated by a comma. Each time interval is specified by a start and end
 time, each formatted as hhmm, separated by a slash.
 
@@ -127,8 +127,8 @@ specify `EXTRA_HOURS` without any regular hours, set `HOURS` to `::::::`.
 
 ### `EXTRA_HOURS`
 
-This is comma-separated list of time intervals, each formatted as YYYY-MM-DDThh:mm/hh:mm. The end time must be
-after the start time (you can not have an interval that crosses midnight). This is ignored if `HOURS` is unset.
+This is a comma-separated list of time intervals, each formatted as YYYY-MM-DDThh:mm/hh:mm. The end time must be
+after the start time (you cannot have an interval that crosses midnight). This is ignored if `HOURS` is unset.
 
 ### `HOLIDAYS`
 
@@ -150,7 +150,7 @@ The following endpoints are available on the backend, once deployed.
 ### `GET /`
 
 This endpoint will return some general information about the service. It can be used to ensure the api is online and 
-has a compatible version, and to check the opening hours. It will return a `message`, which is currently always 
+has a compatible version and to check the opening hours. It will return a `message`, which is currently always 
 `"Success"`, along with an `apiVersion`-string containing the major and minor version of the backend, and an 
 `openingHours`-object. The latter will give the current `time` (as hh:mm) in the time zone the service operates in, a 
 `status`, indicating whether the service is currently `"open"` or `"closed"`, a `description` with a human-readable 
@@ -282,7 +282,7 @@ This is done to reduce the number of times an assistant will respond to a reques
 lost the connection while waiting.
 
 The client specifies the id of the user who is waiting to be assisted in the request. Since there can only be one 
-assistance request per user at any given time, this is sufficient to determine the assistance request to update.
+assistance request per user at any given time, this is enough to determine the assistance request to update.
 
 The endpoint will send a 200-response if the request was successfully updated. A 404-response will be returned if the 
 request could not be found. The latter could mean that something has gone wrong, but it can also occur when an 
@@ -333,7 +333,7 @@ assistant. The backend will then remove the assistance request for the user maki
 assistance requests.
 
 The client specifies the id of the user who no longer wants to be assisted in the request. Since there can only be one
-assistance request per user at any given time, this is sufficient to determine the assistance request to remove.
+assistance request per user at any given time, this is enough to determine the assistance request to remove.
 
 This will return a 200-response if the request was successfully removed. It will return a 404-response if the 
 assistance request could not be found.
@@ -451,9 +451,9 @@ Example response:
 
 This will create a single-use URL the customer's app can use to upload an image to an S3-bucket. To prevent abuse, there 
 isn't an endpoint the end-user apps can use to freely upload data. Instead, when the assistant wants to take a photo,
-the app of the assistant will use this endpoint to generate an upload link that is only valid once.This upload link 
-is then provided to user's app, so it can upload the photo.The endpoint will return the `uploadURL`, along with a `key`
-that can be used to get a download url for the ressource later and the date the upload URL `expiresOn`.
+the app of the assistant will use this endpoint to generate an upload link that is only valid once. This upload link 
+is then provided to the user's app, so it can upload the photo. The endpoint will return the `uploadURL`, along with a 
+`key` that can be used to get a download url for the ressource later and the date the upload URL `expiresOn`.
 
 Response format:
 
