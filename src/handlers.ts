@@ -22,7 +22,7 @@ import {
     GetTokenOptions,
     TokenScope
 } from '@azure/communication-identity';
-import { AssistanceRequest, User, UserToken } from './types';
+import { AssistanceRequest, User, UserProfile, UserToken } from './types';
 import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
 import * as fs from 'node:fs';
 import { UUID, randomUUID } from 'node:crypto';
@@ -154,11 +154,49 @@ export const index: Handler = async (_) => {
  * make the first call slightly more reliable and help to reduce 500-errors from within ACS encountered while
  * establishing the call.
  *
+ * @param event The event containing the optional request body with profile information (name, email, gender).
+ *
  * @returns A 200-response with the userId the new user can use to contact the service.
  */
-export const registerUser: Handler = async (_) => {
+export const registerUser: Handler = async (event) => {
     const userId = randomUUID();
-    await createCommunicationUserIdentifier(getUsername(userId));
+    const username = getUsername(userId);
+    const body = request(event);
+
+    // If profile data is provided, validate and check uniqueness
+    if (body && (body.firstName || body.lastName || body.email || body.gender || body.birthdate || body.phone)) {
+        const profile: UserProfile = {
+            firstName: body.firstName,
+            lastName: body.lastName,
+            email: body.email,
+            gender: body.gender,
+            birthdate: body.birthdate,
+            phone: body.phone
+        };
+
+        const validationError = validateUserProfile(profile);
+        if (validationError) {
+            return response(400, 'application/json', JSON.stringify({error: validationError}));
+        }
+
+        // Check email uniqueness if email is provided
+        if (profile.email) {
+            const existingUser = await getUserByEmail(profile.email);
+            if (existingUser) {
+                return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+            }
+        }
+
+        // Create the communication user identifier
+        await createCommunicationUserIdentifier(username);
+
+        // Save the profile
+        await saveUserProfile(username, profile);
+    } else {
+        // No profile data, just create the communication user identifier
+        await createCommunicationUserIdentifier(username);
+    }
+
     return response(
         200,
         'application/json',
@@ -406,6 +444,69 @@ export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Prom
     );
 };
 
+/**
+ * Update user profile information.
+ *
+ * This endpoint allows updating an existing user's profile. For now, no authentication is required -
+ * anyone with the userId can update the profile.
+ *
+ * The user must already exist (registered via registerUser endpoint). If an email is provided, it must not
+ * be already registered by another user.
+ *
+ * @param event The event containing the request body with userId and profile fields to update.
+ *
+ * @return A 200-response on success, 404-response if user not found, or 400-response with error details if validation fails.
+ */
+export const updateUserProfile: Handler = async (event) => {
+    const body = request(event);
+    const userId = body?.userId;
+
+    if (!userId) {
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
+    }
+
+    const username = getUsername(userId);
+
+    // Check if user exists
+    const userExists = await getCommunicationUserIdentifier(username);
+    if (!userExists) {
+        return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
+    }
+
+    // Build profile from request body
+    const profile: UserProfile = {
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        gender: body.gender,
+        birthdate: body.birthdate,
+        phone: body.phone
+    };
+
+    // Validate profile
+    const validationError = validateUserProfile(profile);
+    if (validationError) {
+        return response(400, 'application/json', JSON.stringify({error: validationError}));
+    }
+
+    // Check email uniqueness if email is being updated
+    if (profile.email) {
+        const existingUser = await getUserByEmail(profile.email);
+        if (existingUser && existingUser !== username) {
+            return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+        }
+    }
+
+    // Save the updated profile
+    await saveUserProfile(username, profile);
+
+    return response(
+        200,
+        'application/json',
+        JSON.stringify({success: true})
+    );
+};
+
 /*
  * Helpers
  */
@@ -524,6 +625,131 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
             EndDateTime: {S: endDateTime.toISOString()},
             Meeting: {S: randomUUID()}
         }
+    }).promise();
+};
+
+/** User profile functions **/
+
+/**
+ * Find a user by their email address.
+ *
+ * @param email  The email address to search for (will be normalized to lowercase).
+ *
+ * @return The username if found, undefined otherwise.
+ */
+const getUserByEmail = async (email: string): Promise<string | undefined> => {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    if (!normalizedEmail) {
+        return undefined;
+    }
+
+    const result = await ddb.query({
+        TableName: communicationUserIdsTableName,
+        IndexName: 'Email-index',
+        KeyConditionExpression: 'Email = :email',
+        ExpressionAttributeValues: {
+            ':email': {S: normalizedEmail}
+        },
+        Limit: 1
+    }).promise();
+
+    return result.Items && result.Items.length > 0
+        ? result.Items[0].Username?.S
+        : undefined;
+};
+
+/**
+ * Get user profile information from the database.
+ *
+ * @param username  The username to look up the profile for.
+ *
+ * @return The UserProfile for the user, if any profile data exists.
+ */
+const getUserProfile = async (username: string): Promise<UserProfile | undefined> => {
+    const item = (
+        await ddb
+            .getItem({
+                TableName: communicationUserIdsTableName,
+                Key: {
+                    Username: {S: username}
+                }
+            })
+            .promise()
+    ).Item;
+
+    if (!item) {
+        return undefined;
+    }
+
+    const profile: UserProfile = {
+        ...(item.FirstName?.S && {firstName: item.FirstName.S}),
+        ...(item.LastName?.S && {lastName: item.LastName.S}),
+        ...(item.Email?.S && {email: item.Email.S}),
+        ...(item.Gender?.S && {gender: item.Gender.S}),
+        ...(item.Birthdate?.S && {birthdate: item.Birthdate.S}),
+        ...(item.Phone?.S && {phone: item.Phone.S})
+    };
+
+    return Object.keys(profile).length > 0 ? profile : undefined;
+};
+
+/**
+ * Save or update user profile information in the database.
+ *
+ * @param username  The username to save the profile for.
+ * @param profile   The profile information to save.
+ */
+const saveUserProfile = async (username: string, profile: UserProfile): Promise<void> => {
+    const updateExpressions: string[] = [];
+    const expressionAttributeNames: { [key: string]: string } = {};
+    const expressionAttributeValues: { [key: string]: AWS.DynamoDB.AttributeValue } = {};
+
+    if (profile.firstName !== undefined) {
+        updateExpressions.push('#firstName = :firstName');
+        expressionAttributeNames['#firstName'] = 'FirstName';
+        expressionAttributeValues[':firstName'] = {S: profile.firstName};
+    }
+    if (profile.lastName !== undefined) {
+        updateExpressions.push('#lastName = :lastName');
+        expressionAttributeNames['#lastName'] = 'LastName';
+        expressionAttributeValues[':lastName'] = {S: profile.lastName};
+    }
+    if (profile.email !== undefined) {
+        // Normalize email to lowercase for case-insensitive uniqueness
+        const normalizedEmail = profile.email.toLowerCase().trim();
+        updateExpressions.push('#email = :email');
+        expressionAttributeNames['#email'] = 'Email';
+        expressionAttributeValues[':email'] = {S: normalizedEmail};
+    }
+    if (profile.gender !== undefined) {
+        updateExpressions.push('#gender = :gender');
+        expressionAttributeNames['#gender'] = 'Gender';
+        expressionAttributeValues[':gender'] = {S: profile.gender};
+    }
+    if (profile.birthdate !== undefined) {
+        updateExpressions.push('#birthdate = :birthdate');
+        expressionAttributeNames['#birthdate'] = 'Birthdate';
+        expressionAttributeValues[':birthdate'] = {S: profile.birthdate};
+    }
+    if (profile.phone !== undefined) {
+        updateExpressions.push('#phone = :phone');
+        expressionAttributeNames['#phone'] = 'Phone';
+        expressionAttributeValues[':phone'] = {S: profile.phone};
+    }
+
+    if (updateExpressions.length === 0) {
+        return;
+    }
+
+    await ddb.updateItem({
+        TableName: communicationUserIdsTableName,
+        Key: {
+            Username: {S: username}
+        },
+        UpdateExpression: 'SET ' + updateExpressions.join(', '),
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues
     }).promise();
 };
 
@@ -670,3 +896,43 @@ const isUUID = (uuid: any): uuid is UUID =>
  * @returns The username to use for the user with the given UUID.
  */
 const getUsername = (uuid: UUID) => 'user_' + uuid.toLowerCase();
+
+
+/**
+ * Validate an email address format.
+ *
+ * @param email The email address to validate.
+ *
+ * @returns True if the email has a valid format, false otherwise.
+ */
+const isValidEmail = (email: string): boolean =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+/**
+ * Validate user profile data.
+ *
+ * @param profile The profile data to validate.
+ *
+ * @returns An error message if validation fails, undefined otherwise.
+ */
+const validateUserProfile = (profile: UserProfile): string | undefined => {
+    if (profile.firstName && (profile.firstName.length < 1 || profile.firstName.length > 100)) {
+        return 'First name must be between 1 and 100 characters';
+    }
+    if (profile.lastName && (profile.lastName.length < 1 || profile.lastName.length > 100)) {
+        return 'Last name must be between 1 and 100 characters';
+    }
+    if (profile.email && !isValidEmail(profile.email)) {
+        return 'Invalid email format';
+    }
+    if (profile.gender && profile.gender.length > 50) {
+        return 'Gender must be 50 characters or less';
+    }
+    if (profile.birthdate && !/^\d{4}-\d{2}-\d{2}$/.test(profile.birthdate)) {
+        return 'Birthdate must be in YYYY-MM-DD format';
+    }
+    if (profile.phone && (profile.phone.length < 10 || profile.phone.length > 20)) {
+        return 'Phone number must be between 10 and 20 characters';
+    }
+    return undefined;
+};

@@ -9,6 +9,27 @@
 import { CommunicationUserIdentifier } from '@azure/communication-common';
 import { CommunicationAccessToken } from '@azure/communication-identity';
 
+/** User profile information. */
+export interface UserProfile {
+    /** The user's first name. */
+    firstName?: string;
+
+    /** The user's last name. */
+    lastName?: string;
+
+    /** The user's email address. */
+    email?: string;
+
+    /** The user's gender. */
+    gender?: string;
+
+    /** The user's birthdate (ISO format: YYYY-MM-DD). */
+    birthdate?: string;
+
+    /** The user's phone number. */
+    phone?: string;
+}
+
 /**
  * A username associated with a CommunicationsUserIdentifier.
  */

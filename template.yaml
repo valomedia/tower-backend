@@ -183,10 +183,19 @@ Resources:
       AttributeDefinitions:
         - AttributeName: "Username"
           AttributeType: "S"
+        - AttributeName: "Email"
+          AttributeType: "S"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
         - AttributeName: "Username"
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: "Email-index"
+          KeySchema:
+            - AttributeName: "Email"
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
   TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
@@ -217,6 +226,23 @@ Resources:
               Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /registerUser
+            Method: POST
+  TowerBackendUpdateUserProfileLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.updateUserProfile
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            Auth:
+              Authorizer: NONE
+            RestApiId: !Ref TowerApi
+            Path: /updateUserProfile
             Method: POST
   TowerBackendRequestAssistanceLambda:
     Type: AWS::Serverless::Function
