@@ -9,11 +9,7 @@
 const { spawnSync } = require('child_process');
 
 function spawnOrFail(command, args, options = null, printOutput = true) {
-    options = {
-        ...options,
-        shell: true
-    };
-    const cmd = spawnSync(command, args, options);
+    const cmd = spawnSync(command, args, options || {});
     if (cmd.error) {
         // noinspection JSUnresolvedReference
         console.log(`Command ${command} failed with ${cmd.error.code}`);
