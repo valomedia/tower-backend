@@ -22,7 +22,7 @@ import {
     GetTokenOptions,
     TokenScope
 } from '@azure/communication-identity';
-import { AssistanceRequest, User, UserProfile, UserToken } from './types';
+import { AssistanceRequest, User, UserToken } from './types';
 import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
 import * as fs from 'node:fs';
 import { UUID, randomUUID } from 'node:crypto';
@@ -35,7 +35,8 @@ const s3 = new AWS.S3();
 // Read environment.
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
 const callRecordsTableName = process.env.CALL_RECORDS_TABLE_NAME!;
-const communicationUserIdsTableName = process.env.COMMUNICATION_USER_IDS_TABLE_NAME!;
+// 2026-04-14 - DH - renamed from communicationUserIdsTableName to reflect extension
+const UsersTableName = process.env.USERS_TABLE_NAME!;
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
@@ -159,43 +160,20 @@ export const index: Handler = async (_) => {
  * @returns A 200-response with the userId the new user can use to contact the service.
  */
 export const registerUser: Handler = async (event) => {
-    const userId = randomUUID();
-    const username = getUsername(userId);
     const body = request(event);
+    const userId = randomUUID();
+    const user = {
+        ...(await createUser(getUsername(userId))),
+        userId,
+        ...(body?.firstName && {firstName: body.firstName}),
+        ...(body?.lastName && {lastName: body.lastName}),
+        ...(body?.email && {email: body.email}),
+        ...(body?.gender && {gender: body.gender}),
+        ...(body?.birthdate && {birthdate: body.birthdate}),
+        ...(body?.phone && {phone: body.phone})
+    };
 
-    // If profile data is provided, validate and check uniqueness
-    if (body && (body.firstName || body.lastName || body.email || body.gender || body.birthdate || body.phone)) {
-        const profile: UserProfile = {
-            firstName: body.firstName,
-            lastName: body.lastName,
-            email: body.email,
-            gender: body.gender,
-            birthdate: body.birthdate,
-            phone: body.phone
-        };
-
-        const validationError = validateUserProfile(profile);
-        if (validationError) {
-            return response(400, 'application/json', JSON.stringify({error: validationError}));
-        }
-
-        // Check email uniqueness if email is provided
-        if (profile.email) {
-            const existingUser = await getUserByEmail(profile.email);
-            if (existingUser) {
-                return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
-            }
-        }
-
-        // Create the communication user identifier
-        await createCommunicationUserIdentifier(username);
-
-        // Save the profile
-        await saveUserProfile(username, profile);
-    } else {
-        // No profile data, just create the communication user identifier
-        await createCommunicationUserIdentifier(username);
-    }
+    await saveUser(user);
 
     return response(
         200,
@@ -353,6 +331,7 @@ export const beginAssistance: Handler = async (event) => {
     return response(200, 'application/json', JSON.stringify({assistanceRequest}));
 };
 
+// noinspection JSUnusedGlobalSymbols
 /**
  * Create a single use file-upload url.
  *
@@ -379,6 +358,7 @@ export const createImageUploadUrl: Handler = async (_) => {
     return response(200, 'application/json', JSON.stringify({uploadUrl, key, expiresOn}));
 };
 
+// noinspection JSUnusedGlobalSymbols
 /**
  * Create a single use file-download url.
  * 
@@ -444,6 +424,34 @@ export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Prom
     );
 };
 
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Get user profile information.
+ *
+ * This endpoint retrieves an existing user's profile. For now, no authentication is required -
+ * anyone with the userId can retrieve the profile.
+ *
+ * @param event The event containing the request body with userId parameter.
+ *
+ * @return A 200-response with the user data on success, 404-response if user not found, or 400-response if userId is missing.
+ */
+export const getUser: Handler = async (event) => {
+    const body = request(event);
+    const userId = body?.userId;
+
+    if (!userId) {
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
+    }
+
+    const user = await getUserById(userId);
+    if (!user) {
+        return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
+    }
+
+    return response(200, 'application/json', JSON.stringify({user}));
+};
+
+// noinspection JSUnusedGlobalSymbols
 /**
  * Update user profile information.
  *
@@ -457,7 +465,7 @@ export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Prom
  *
  * @return A 200-response on success, 404-response if user not found, or 400-response with error details if validation fails.
  */
-export const updateUserProfile: Handler = async (event) => {
+export const updateUser: Handler = async (event) => {
     const body = request(event);
     const userId = body?.userId;
 
@@ -465,46 +473,35 @@ export const updateUserProfile: Handler = async (event) => {
         return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
     }
 
-    const username = getUsername(userId);
-
-    // Check if user exists
-    const userExists = await getCommunicationUserIdentifier(username);
-    if (!userExists) {
+    //Get user by userId / check if exists
+    const user = await getUserById(userId);
+    if (!user) {
         return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
     }
 
-    // Build profile from request body
-    const profile: UserProfile = {
-        firstName: body.firstName,
-        lastName: body.lastName,
-        email: body.email,
-        gender: body.gender,
-        birthdate: body.birthdate,
-        phone: body.phone
-    };
+    const userNew = {
+        username: user.username,
+        communicationUserId: user.communicationUserId,
+        ...(body?.firstName && {firstName: body.firstName}),
+        ...(body?.lastName && {lastName: body.lastName}),
+        ...(body?.email && {email: body.email}),
+        ...(body?.gender && {gender: body.gender}),
+        ...(body?.birthdate && {birthdate: body.birthdate}),
+        ...(body?.phone && {phone: body.phone})
+    } as User;
 
-    // Validate profile
-    const validationError = validateUserProfile(profile);
-    if (validationError) {
-        return response(400, 'application/json', JSON.stringify({error: validationError}));
-    }
-
-    // Check email uniqueness if email is being updated
-    if (profile.email) {
-        const existingUser = await getUserByEmail(profile.email);
-        if (existingUser && existingUser !== username) {
+    // If profile data is provided, validate and check uniqueness
+    if (userNew.email) {
+        const existingUser = await getUserNameByEmail(userNew.email);
+        if (existingUser && existingUser !== user.username) {
             return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
         }
     }
 
     // Save the updated profile
-    await saveUserProfile(username, profile);
+    await saveUser(userNew);
 
-    return response(
-        200,
-        'application/json',
-        JSON.stringify({success: true})
-    );
+    return response(200, 'application/json', JSON.stringify({}));
 };
 
 /*
@@ -633,23 +630,17 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
 /**
  * Find a user by their email address.
  *
- * @param email  The email address to search for (will be normalized to lowercase).
+ * @param email  The normalized email address to search for.
  *
  * @return The username if found, undefined otherwise.
  */
-const getUserByEmail = async (email: string): Promise<string | undefined> => {
-    const normalizedEmail = email.toLowerCase().trim();
-
-    if (!normalizedEmail) {
-        return undefined;
-    }
-
+const getUserNameByEmail = async (email: string): Promise<string | undefined> => {
     const result = await ddb.query({
-        TableName: communicationUserIdsTableName,
-        IndexName: 'Email-index',
+        TableName: UsersTableName,
+        IndexName: 'Email',
         KeyConditionExpression: 'Email = :email',
         ExpressionAttributeValues: {
-            ':email': {S: normalizedEmail}
+            ':email': {S: email}
         },
         Limit: 1
     }).promise();
@@ -662,15 +653,28 @@ const getUserByEmail = async (email: string): Promise<string | undefined> => {
 /**
  * Get user profile information from the database.
  *
- * @param username  The username to look up the profile for.
+ * @param userId The users ID
  *
- * @return The UserProfile for the user, if any profile data exists.
+ * @return The User for the user, or undefined ig the user doesn't exist
+
  */
-const getUserProfile = async (username: string): Promise<UserProfile | undefined> => {
+const getUserById = async (userId: UUID): Promise<User | undefined> => {
+    return getUserByName(getUsername(userId));
+}
+
+/**
+ * Get user profile information from the database.
+ *
+ * @param username The users name
+ *
+ * @return The User for the user, or undefined ig the user doesn't exist
+
+ */
+const getUserByName = async (username: string): Promise<User | undefined> => {
     const item = (
         await ddb
             .getItem({
-                TableName: communicationUserIdsTableName,
+                TableName: UsersTableName,
                 Key: {
                     Username: {S: username}
                 }
@@ -678,78 +682,39 @@ const getUserProfile = async (username: string): Promise<UserProfile | undefined
             .promise()
     ).Item;
 
-    if (!item) {
+    if (!item || !item.CommunicationUserId?.S || !item.Username?.S) {
         return undefined;
     }
 
-    const profile: UserProfile = {
-        ...(item.FirstName?.S && {firstName: item.FirstName.S}),
-        ...(item.LastName?.S && {lastName: item.LastName.S}),
-        ...(item.Email?.S && {email: item.Email.S}),
-        ...(item.Gender?.S && {gender: item.Gender.S}),
-        ...(item.Birthdate?.S && {birthdate: item.Birthdate.S}),
-        ...(item.Phone?.S && {phone: item.Phone.S})
-    };
-
-    return Object.keys(profile).length > 0 ? profile : undefined;
+    return {
+        username: item.Username.S,
+        communicationUserId: item.CommunicationUserId.S,
+        ...(item.FirstName?.S && {firstName: item.firstName.S}),
+        ...(item.LastName?.S && {lastName: item.lastName.S}),
+        ...(item.email?.S && {email: item.email.S}),
+        ...(item.Gender?.S && {gender: item.gender.S}),
+        ...(item.Birthdate?.S && {birthdate: item.birthdate.S}),
+        ...(item.Phone?.S && {phone: item.phone.S})
+    } as User;
 };
 
 /**
- * Save or update user profile information in the database.
+ * Save or update user information in the database.
  *
- * @param username  The username to save the profile for.
- * @param profile   The profile information to save.
+ * @param user  The user.
  */
-const saveUserProfile = async (username: string, profile: UserProfile): Promise<void> => {
-    const updateExpressions: string[] = [];
-    const expressionAttributeNames: { [key: string]: string } = {};
-    const expressionAttributeValues: { [key: string]: AWS.DynamoDB.AttributeValue } = {};
-
-    if (profile.firstName !== undefined) {
-        updateExpressions.push('#firstName = :firstName');
-        expressionAttributeNames['#firstName'] = 'FirstName';
-        expressionAttributeValues[':firstName'] = {S: profile.firstName};
-    }
-    if (profile.lastName !== undefined) {
-        updateExpressions.push('#lastName = :lastName');
-        expressionAttributeNames['#lastName'] = 'LastName';
-        expressionAttributeValues[':lastName'] = {S: profile.lastName};
-    }
-    if (profile.email !== undefined) {
-        // Normalize email to lowercase for case-insensitive uniqueness
-        const normalizedEmail = profile.email.toLowerCase().trim();
-        updateExpressions.push('#email = :email');
-        expressionAttributeNames['#email'] = 'Email';
-        expressionAttributeValues[':email'] = {S: normalizedEmail};
-    }
-    if (profile.gender !== undefined) {
-        updateExpressions.push('#gender = :gender');
-        expressionAttributeNames['#gender'] = 'Gender';
-        expressionAttributeValues[':gender'] = {S: profile.gender};
-    }
-    if (profile.birthdate !== undefined) {
-        updateExpressions.push('#birthdate = :birthdate');
-        expressionAttributeNames['#birthdate'] = 'Birthdate';
-        expressionAttributeValues[':birthdate'] = {S: profile.birthdate};
-    }
-    if (profile.phone !== undefined) {
-        updateExpressions.push('#phone = :phone');
-        expressionAttributeNames['#phone'] = 'Phone';
-        expressionAttributeValues[':phone'] = {S: profile.phone};
-    }
-
-    if (updateExpressions.length === 0) {
-        return;
-    }
-
-    await ddb.updateItem({
-        TableName: communicationUserIdsTableName,
-        Key: {
-            Username: {S: username}
-        },
-        UpdateExpression: 'SET ' + updateExpressions.join(', '),
-        ExpressionAttributeNames: expressionAttributeNames,
-        ExpressionAttributeValues: expressionAttributeValues
+const saveUser = async (user: User): Promise<void> => {
+    await ddb.putItem({
+        TableName: UsersTableName,
+        Item: {
+            Username: {S: user.username},
+            ...(user.firstName && {firstName: {S: user.firstName}}),
+            ...(user.lastName && {lastName: {S: user.lastName}}),
+            ...(user.email && {email: {S: user.email}}),
+            ...(user.gender && {gender: {S: user.gender}}),
+            ...(user.birthdate && {birthdate: {S: user.birthdate}}),
+            ...(user.phone && {phone: {S: user.phone}})
+        }
     }).promise();
 };
 
@@ -764,7 +729,7 @@ const getCommunicationUserIdentifier = async (username: string): Promise<Communi
     const communicationUserId = (
         await ddb
             .getItem({
-                TableName: communicationUserIdsTableName,
+                TableName: UsersTableName,
                 Key: {
                     Username: { S: username }
                 }
@@ -775,22 +740,22 @@ const getCommunicationUserIdentifier = async (username: string): Promise<Communi
 };
 
 /**
- * Create a new communication user for a given user and add it to the database.
+ * Create a new user, assign communication id, and add it to the database.
  *
  * @param username  The user to create a communication user identity for.
  *
- * @return The CommunicationUserIdentifier for the user.
+ * @return The User for the user.
  */
-const createCommunicationUserIdentifier = async (username: string): Promise<CommunicationUserIdentifier> => {
-    const communicationUserIdentifier = await communicationIdentityClient.createUser();
+const createUser = async (username: string): Promise<User> => {
+    const user = await communicationIdentityClient.createUser();
     await ddb.putItem({
-        TableName: communicationUserIdsTableName,
+        TableName: UsersTableName,
         Item: {
             Username: { S: username },
-            CommunicationUserId: { S: communicationUserIdentifier.communicationUserId }
+            CommunicationUserId: { S: user.communicationUserId }
         }
     }).promise();
-    return communicationUserIdentifier;
+    return user as User;
 };
 
 /**
@@ -802,7 +767,7 @@ const createCommunicationUserIdentifier = async (username: string): Promise<Comm
  */
 const getOrCreateCommunicationUserIdentifier = async (username: string) => {
     const existingId = await getCommunicationUserIdentifier(username);
-    const result = existingId || await createCommunicationUserIdentifier(username);
+    const result = existingId || await createUser(username);
     console.debug(
         `${existingId ? 'Got' : 'Created'} communication user ID '${result.communicationUserId} for user ${username}'`
     );
@@ -896,43 +861,3 @@ const isUUID = (uuid: any): uuid is UUID =>
  * @returns The username to use for the user with the given UUID.
  */
 const getUsername = (uuid: UUID) => 'user_' + uuid.toLowerCase();
-
-
-/**
- * Validate an email address format.
- *
- * @param email The email address to validate.
- *
- * @returns True if the email has a valid format, false otherwise.
- */
-const isValidEmail = (email: string): boolean =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-/**
- * Validate user profile data.
- *
- * @param profile The profile data to validate.
- *
- * @returns An error message if validation fails, undefined otherwise.
- */
-const validateUserProfile = (profile: UserProfile): string | undefined => {
-    if (profile.firstName && (profile.firstName.length < 1 || profile.firstName.length > 100)) {
-        return 'First name must be between 1 and 100 characters';
-    }
-    if (profile.lastName && (profile.lastName.length < 1 || profile.lastName.length > 100)) {
-        return 'Last name must be between 1 and 100 characters';
-    }
-    if (profile.email && !isValidEmail(profile.email)) {
-        return 'Invalid email format';
-    }
-    if (profile.gender && profile.gender.length > 50) {
-        return 'Gender must be 50 characters or less';
-    }
-    if (profile.birthdate && !/^\d{4}-\d{2}-\d{2}$/.test(profile.birthdate)) {
-        return 'Birthdate must be in YYYY-MM-DD format';
-    }
-    if (profile.phone && (profile.phone.length < 10 || profile.phone.length > 20)) {
-        return 'Phone number must be between 10 and 20 characters';
-    }
-    return undefined;
-};

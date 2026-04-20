@@ -52,7 +52,9 @@ Globals:
       Variables:
         ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
-        COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
+        # Table resource name remains CommunicationUserIds for backward compatibility
+        # Environment variable renamed to reflect expanded use as general users table
+        USERS_TABLE_NAME: !Ref CommunicationUserIds
         AUTH_URL: !Ref AuthUrl
         COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
         COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
@@ -176,6 +178,7 @@ Resources:
           Projection:
             ProjectionType: ALL
   CommunicationUserIds:
+    # 2026-04-16 - DH - Name of table kept for compatibility. Table now holds the entire user profile
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Type: AWS::DynamoDB::Table
@@ -190,7 +193,7 @@ Resources:
         - AttributeName: "Username"
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: "Email-index"
+        - IndexName: "Email"
           KeySchema:
             - AttributeName: "Email"
               KeyType: HASH
@@ -227,10 +230,27 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /registerUser
             Method: POST
-  TowerBackendUpdateUserProfileLambda:
+  TowerBackendGetUserLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.updateUserProfile
+      Handler: handlers.getUser
+      CodeUri: build/
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CommunicationUserIds
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            Auth:
+              Authorizer: NONE
+            RestApiId: !Ref TowerApi
+            Path: /getUser
+            Method: POST
+  TowerBackendUpdateUserLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.updateUser
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
@@ -242,7 +262,7 @@ Resources:
             Auth:
               Authorizer: NONE
             RestApiId: !Ref TowerApi
-            Path: /updateUserProfile
+            Path: /updateUser
             Method: POST
   TowerBackendRequestAssistanceLambda:
     Type: AWS::Serverless::Function
