@@ -35,8 +35,8 @@ const s3 = new AWS.S3();
 // Read environment.
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
 const callRecordsTableName = process.env.CALL_RECORDS_TABLE_NAME!;
-// 2026-04-14 - DH - renamed from communicationUserIdsTableName to reflect extension
-const UsersTableName = process.env.USERS_TABLE_NAME!;
+const communicationUserIdsTableName = process.env.COMMUNICATION_USER_IDS_TABLE_NAME!;
+const userProfilesTableName = process.env.USER_PROFILES_TABLE_NAME!;
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
@@ -162,18 +162,18 @@ export const index: Handler = async (_) => {
 export const registerUser: Handler = async (event) => {
     const body = request(event);
     const userId = randomUUID();
-    const user = {
-        ...(await createUser(getUsername(userId))),
-        userId,
+    const username = getUsername(userId);
+    await createUser(username);
+    await saveUser({
+        username,
+        communicationUserId: '',
         ...(body?.firstName && {firstName: body.firstName}),
         ...(body?.lastName && {lastName: body.lastName}),
         ...(body?.email && {email: body.email}),
         ...(body?.gender && {gender: body.gender}),
         ...(body?.birthdate && {birthdate: body.birthdate}),
         ...(body?.phone && {phone: body.phone})
-    };
-
-    await saveUser(user);
+    } as User);
 
     return response(
         200,
@@ -636,7 +636,7 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
  */
 const getUserNameByEmail = async (email: string): Promise<string | undefined> => {
     const result = await ddb.query({
-        TableName: UsersTableName,
+        TableName: userProfilesTableName,
         IndexName: 'Email',
         KeyConditionExpression: 'Email = :email',
         ExpressionAttributeValues: {
@@ -671,10 +671,10 @@ const getUserById = async (userId: UUID): Promise<User | undefined> => {
 
  */
 const getUserByName = async (username: string): Promise<User | undefined> => {
-    const item = (
+    const commItem = (
         await ddb
             .getItem({
-                TableName: UsersTableName,
+                TableName: communicationUserIdsTableName,
                 Key: {
                     Username: {S: username}
                 }
@@ -682,19 +682,30 @@ const getUserByName = async (username: string): Promise<User | undefined> => {
             .promise()
     ).Item;
 
-    if (!item || !item.CommunicationUserId?.S || !item.Username?.S) {
+    if (!commItem?.CommunicationUserId?.S || !commItem?.Username?.S) {
         return undefined;
     }
 
+    const profileItem = (
+        await ddb
+            .getItem({
+                TableName: userProfilesTableName,
+                Key: {
+                    Username: {S: username}
+                }
+            })
+            .promise()
+    ).Item;
+
     return {
-        username: item.Username.S,
-        communicationUserId: item.CommunicationUserId.S,
-        ...(item.FirstName?.S && {firstName: item.firstName.S}),
-        ...(item.LastName?.S && {lastName: item.lastName.S}),
-        ...(item.email?.S && {email: item.email.S}),
-        ...(item.Gender?.S && {gender: item.gender.S}),
-        ...(item.Birthdate?.S && {birthdate: item.birthdate.S}),
-        ...(item.Phone?.S && {phone: item.phone.S})
+        username: commItem.Username.S,
+        communicationUserId: commItem.CommunicationUserId.S,
+        ...(profileItem?.FirstName?.S && {firstName: profileItem.FirstName.S}),
+        ...(profileItem?.LastName?.S && {lastName: profileItem.LastName.S}),
+        ...(profileItem?.Email?.S && {email: profileItem.Email.S}),
+        ...(profileItem?.Gender?.S && {gender: profileItem.Gender.S}),
+        ...(profileItem?.Birthdate?.S && {birthdate: profileItem.Birthdate.S}),
+        ...(profileItem?.Phone?.S && {phone: profileItem.Phone.S})
     } as User;
 };
 
@@ -705,15 +716,15 @@ const getUserByName = async (username: string): Promise<User | undefined> => {
  */
 const saveUser = async (user: User): Promise<void> => {
     await ddb.putItem({
-        TableName: UsersTableName,
+        TableName: userProfilesTableName,
         Item: {
             Username: {S: user.username},
-            ...(user.firstName && {firstName: {S: user.firstName}}),
-            ...(user.lastName && {lastName: {S: user.lastName}}),
-            ...(user.email && {email: {S: user.email}}),
-            ...(user.gender && {gender: {S: user.gender}}),
-            ...(user.birthdate && {birthdate: {S: user.birthdate}}),
-            ...(user.phone && {phone: {S: user.phone}})
+            ...(user.firstName && {FirstName: {S: user.firstName}}),
+            ...(user.lastName && {LastName: {S: user.lastName}}),
+            ...(user.email && {Email: {S: user.email}}),
+            ...(user.gender && {Gender: {S: user.gender}}),
+            ...(user.birthdate && {Birthdate: {S: user.birthdate}}),
+            ...(user.phone && {Phone: {S: user.phone}})
         }
     }).promise();
 };
@@ -729,7 +740,7 @@ const getCommunicationUserIdentifier = async (username: string): Promise<Communi
     const communicationUserId = (
         await ddb
             .getItem({
-                TableName: UsersTableName,
+                TableName: communicationUserIdsTableName,
                 Key: {
                     Username: { S: username }
                 }
@@ -749,7 +760,7 @@ const getCommunicationUserIdentifier = async (username: string): Promise<Communi
 const createUser = async (username: string): Promise<User> => {
     const user = await communicationIdentityClient.createUser();
     await ddb.putItem({
-        TableName: UsersTableName,
+        TableName: communicationUserIdsTableName,
         Item: {
             Username: { S: username },
             CommunicationUserId: { S: user.communicationUserId }

@@ -52,9 +52,8 @@ Globals:
       Variables:
         ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
-        # Table resource name remains CommunicationUserIds for backward compatibility
-        # Environment variable renamed to reflect expanded use as general users table
-        USERS_TABLE_NAME: !Ref CommunicationUserIds
+        COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
+        USER_PROFILES_TABLE_NAME: !Ref UserProfiles
         AUTH_URL: !Ref AuthUrl
         COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
         COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
@@ -178,7 +177,18 @@ Resources:
           Projection:
             ProjectionType: ALL
   CommunicationUserIds:
-    # 2026-04-16 - DH - Name of table kept for compatibility. Table now holds the entire user profile
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Username"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Username"
+          KeyType: HASH
+  UserProfiles:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Type: AWS::DynamoDB::Table
@@ -221,6 +231,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -238,6 +250,8 @@ Resources:
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -253,8 +267,10 @@ Resources:
       Handler: handlers.updateUser
       CodeUri: build/
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
