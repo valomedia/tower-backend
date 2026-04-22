@@ -232,8 +232,7 @@ Example response:
 
 Error responses:
 
-- `400 Bad Request` - If validation fails (invalid email format, birthdate not in YYYY-MM-DD format, etc.)
-- `400 Bad Request` - If the provided email is already registered by another user
+- `{error: "Email already registered"}`
 
 ### `POST /requestAssistance`
 
@@ -426,8 +425,8 @@ Example response:
 
 Error responses:
 
-- `400 Bad Request` - If userId parameter is missing
-- `404 Not Found` - If the user with the provided userId does not exist
+- `{"error": "Need parameter: userId"}`
+- `{"error": "User not found"}`
 
 ### `POST /updateUser`
 
@@ -486,10 +485,9 @@ Example response:
 
 Error responses:
 
-- `400 Bad Request` - If userId parameter is missing
-- `400 Bad Request` - If validation fails (invalid email format, name too long, etc.)
-- `400 Bad Request` - If the provided email is already registered by another user
-- `404 Not Found` - If the user with the provided userId does not exist
+- `{"error": "Need parameter: userId"}`
+- `{"error": "Email already registered"}`
+- `{"error": "User not found"}`
 
 ### `GET /assistanceToken`
 
