@@ -163,6 +163,11 @@ export const registerUser: Handler = async (event) => {
     const body = request(event);
     const userId = randomUUID();
     const username = getUsername(userId);
+
+    if (body?.email && await getUserNameByEmail(body.email)) {
+        return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+    }
+
     await createUser(username);
     await saveUser({
         username,
