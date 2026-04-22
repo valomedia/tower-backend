@@ -170,14 +170,9 @@ export const registerUser: Handler = async (event) => {
 
     await createUser(username);
     await saveUser({
+        ...body,
         username,
         communicationUserId: '',
-        ...(body?.firstName && {firstName: body.firstName}),
-        ...(body?.lastName && {lastName: body.lastName}),
-        ...(body?.email && {email: body.email}),
-        ...(body?.gender && {gender: body.gender}),
-        ...(body?.birthdate && {birthdate: body.birthdate}),
-        ...(body?.phone && {phone: body.phone})
     } as User);
 
     return response(
@@ -485,14 +480,9 @@ export const updateUser: Handler = async (event) => {
     }
 
     const userNew = {
+        ...body,
         username: user.username,
         communicationUserId: user.communicationUserId,
-        ...(body?.firstName && {firstName: body.firstName}),
-        ...(body?.lastName && {lastName: body.lastName}),
-        ...(body?.email && {email: body.email}),
-        ...(body?.gender && {gender: body.gender}),
-        ...(body?.birthdate && {birthdate: body.birthdate}),
-        ...(body?.phone && {phone: body.phone})
     } as User;
 
     // If profile data is provided, validate and check uniqueness
