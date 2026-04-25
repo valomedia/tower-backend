@@ -204,6 +204,41 @@ requests to the backend. Since the UUID can be used without further authenticati
 information about the user (such as when and for how long the user has called), it should be treated as moderately 
 sensitive.
 
+Optionally, profile information can be provided during registration. If an email is provided, it must be unique across
+all users. All profile fields are optional and can also be set or updated later via the `/updateUser` endpoint.
+
+Request format:
+
+```
+{
+    firstName?: string,
+    lastName?: string,
+    email?: string,
+    gender?: string,
+    birthdate?: string (YYYY-MM-DD format),
+    phone?: string
+}
+```
+
+Example request (without profile):
+
+```json
+{}
+```
+
+Example request (with profile):
+
+```json
+{
+    "firstName": "Anna",
+    "lastName": "Müller",
+    "email": "anna.mueller@example.com",
+    "gender": "female",
+    "birthdate": "1990-05-15",
+    "phone": "+49123456789"
+}
+```
+
 Response format:
 
 ```
@@ -219,6 +254,10 @@ Example response:
     "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
 } 
 ```
+
+Error responses:
+
+- `{error: "Email already registered"}`
 
 ### `POST /requestAssistance`
 
@@ -353,6 +392,127 @@ Example request:
     "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
 } 
 ```
+
+### `POST /getUser`
+
+This endpoint retrieves an existing user's profile information. For now, no authentication is required - anyone with
+the userId can retrieve the profile.
+
+Request format:
+
+```
+{
+    userId: UUID
+}
+```
+
+Example request:
+
+```json
+{
+    "userId": "908d4e54-18cd-41f1-80fc-57779a108947"
+}
+```
+
+Response format:
+
+```
+{
+    user: {
+        username: string,
+        communicationUserId: string,
+        firstName?: string,
+        lastName?: string,
+        email?: string,
+        gender?: string,
+        birthdate?: string,
+        phone?: string
+    }
+}
+```
+
+Example response:
+
+```json
+{
+    "user": {
+        "username": "user_908d4e54-18cd-41f1-80fc-57779a108947",
+        "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963",
+        "firstName": "Anna",
+        "lastName": "Müller",
+        "email": "anna.mueller@example.com",
+        "gender": "female",
+        "birthdate": "1990-05-15",
+        "phone": "+49123456789"
+    }
+}
+```
+
+Error responses:
+
+- `{"error": "Need parameter: userId"}`
+- `{"error": "User not found"}`
+
+### `POST /updateUser`
+
+This endpoint allows updating an existing user's profile information. For now, no authentication is required - anyone
+with the userId can update the profile. The user must already exist (have been registered via the `/registerUser`
+endpoint).
+
+All profile fields are optional. Only the fields provided in the request will be updated; omitted fields will remain
+unchanged. If an email is provided, it must not be already registered by another user.
+
+Profile field validation rules:
+- `firstName`: 1-100 characters if provided
+- `lastName`: 1-100 characters if provided
+- `email`: Must be a valid email format (will be normalized to lowercase)
+- `gender`: Maximum 50 characters if provided
+- `birthdate`: Must be in YYYY-MM-DD format if provided
+- `phone`: 10-20 characters if provided
+
+Request format:
+
+```
+{
+    userId: UUID,
+    firstName?: string,
+    lastName?: string,
+    email?: string,
+    gender?: string,
+    birthdate?: string (YYYY-MM-DD format),
+    phone?: string
+}
+```
+
+Example request:
+
+```json
+{
+    "userId": "908d4e54-18cd-41f1-80fc-57779a108947",
+    "firstName": "Anna",
+    "lastName": "Müller",
+    "email": "anna.mueller@example.com",
+    "phone": "+49123456789"
+}
+```
+
+Response format:
+
+```
+{}
+```
+
+Example response:
+
+```json
+{}
+```
+
+Error responses:
+
+- `{"error": "Need parameter: userId"}`
+- `{"error": "Email already registered"}`
+- `{"error": "User not found"}`
 
 ### `GET /assistanceToken`
 

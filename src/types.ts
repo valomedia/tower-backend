@@ -10,7 +10,7 @@ import { CommunicationUserIdentifier } from '@azure/communication-common';
 import { CommunicationAccessToken } from '@azure/communication-identity';
 
 /**
- * A username associated with a CommunicationsUserIdentifier.
+ * A user associated with a CommunicationsUserIdentifier.
  */
 export interface User extends CommunicationUserIdentifier {
 
@@ -18,6 +18,37 @@ export interface User extends CommunicationUserIdentifier {
      * The username of the user.
      */
     username: string;
+
+    // 2026-04-14 - DH - added user profile fields
+    /**
+     * The given name of the user, if known.
+     */
+    firstName?: string;
+
+    /**
+     * The family name of the user, if known.
+     */
+    lastName?: string;
+
+    /**
+     * The gender of the user, if known.
+     */
+    gender?: string;
+
+    /**
+     * The birthdate of the user (formatted as YYYY-MM-DD), if known.
+     */
+    birthdate?: string;
+
+    /**
+     * The preferred phone number for calling the user, if known.
+     */
+    phone?: string;
+
+    /**
+     * The preferred e-mail address for contacting the user, if known.
+     */
+    email?: string;
 
 }
 

@@ -53,6 +53,7 @@ Globals:
         ASSISTANCE_REQUESTS_TABLE_NAME: !Ref AssistanceRequests
         CALL_RECORDS_TABLE_NAME: !Ref CallRecords
         COMMUNICATION_USER_IDS_TABLE_NAME: !Ref CommunicationUserIds
+        USER_PROFILES_TABLE_NAME: !Ref UserProfiles
         AUTH_URL: !Ref AuthUrl
         COMMUNICATION_SERVICES_ENDPOINT: !Ref CommunicationServicesEndpoint
         COMMUNICATION_SERVICES_ACCESSKEY: !Ref CommunicationServicesAccesskey
@@ -187,6 +188,27 @@ Resources:
       KeySchema:
         - AttributeName: "Username"
           KeyType: HASH
+  UserProfiles:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "Username"
+          AttributeType: "S"
+        - AttributeName: "Email"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Username"
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: "Email"
+          KeySchema:
+            - AttributeName: "Email"
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
   TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
@@ -209,6 +231,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -217,6 +241,44 @@ Resources:
               Authorizer: NONE
             RestApiId: !Ref TowerApi
             Path: /registerUser
+            Method: POST
+  TowerBackendGetUserLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.getUser
+      CodeUri: build/
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CommunicationUserIds
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfiles
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            Auth:
+              Authorizer: NONE
+            RestApiId: !Ref TowerApi
+            Path: /getUser
+            Method: POST
+  TowerBackendUpdateUserLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.updateUser
+      CodeUri: build/
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            Auth:
+              Authorizer: NONE
+            RestApiId: !Ref TowerApi
+            Path: /updateUser
             Method: POST
   TowerBackendRequestAssistanceLambda:
     Type: AWS::Serverless::Function

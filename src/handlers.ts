@@ -36,6 +36,7 @@ const s3 = new AWS.S3();
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
 const callRecordsTableName = process.env.CALL_RECORDS_TABLE_NAME!;
 const communicationUserIdsTableName = process.env.COMMUNICATION_USER_IDS_TABLE_NAME!;
+const userProfilesTableName = process.env.USER_PROFILES_TABLE_NAME!;
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
@@ -154,11 +155,26 @@ export const index: Handler = async (_) => {
  * make the first call slightly more reliable and help to reduce 500-errors from within ACS encountered while
  * establishing the call.
  *
+ * @param event The event containing the optional request body with profile information (name, email, gender).
+ *
  * @returns A 200-response with the userId the new user can use to contact the service.
  */
-export const registerUser: Handler = async (_) => {
+export const registerUser: Handler = async (event) => {
+    const body = request(event);
     const userId = randomUUID();
-    await createCommunicationUserIdentifier(getUsername(userId));
+    const username = getUsername(userId);
+
+    if (body?.email && await getUserNameByEmail(body.email)) {
+        return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+    }
+
+    await createUser(username);
+    await saveUser({
+        ...body,
+        username,
+        communicationUserId: '',
+    } as User);
+
     return response(
         200,
         'application/json',
@@ -315,6 +331,7 @@ export const beginAssistance: Handler = async (event) => {
     return response(200, 'application/json', JSON.stringify({assistanceRequest}));
 };
 
+// noinspection JSUnusedGlobalSymbols
 /**
  * Create a single use file-upload url.
  *
@@ -341,6 +358,7 @@ export const createImageUploadUrl: Handler = async (_) => {
     return response(200, 'application/json', JSON.stringify({uploadUrl, key, expiresOn}));
 };
 
+// noinspection JSUnusedGlobalSymbols
 /**
  * Create a single use file-download url.
  * 
@@ -404,6 +422,81 @@ export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Prom
             })
             .end()
     );
+};
+
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Get user profile information.
+ *
+ * This endpoint retrieves an existing user's profile. For now, no authentication is required -
+ * anyone with the userId can retrieve the profile.
+ *
+ * @param event The event containing the request body with userId parameter.
+ *
+ * @return A 200-response with the user data on success, 404-response if user not found, or 400-response if userId is missing.
+ */
+export const getUser: Handler = async (event) => {
+    const body = request(event);
+    const userId = body?.userId;
+
+    if (!userId) {
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
+    }
+
+    const user = await getUserById(userId);
+    if (!user) {
+        return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
+    }
+
+    return response(200, 'application/json', JSON.stringify({user}));
+};
+
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Update user profile information.
+ *
+ * This endpoint allows updating an existing user's profile. For now, no authentication is required -
+ * anyone with the userId can update the profile.
+ *
+ * The user must already exist (registered via registerUser endpoint). If an email is provided, it must not
+ * be already registered by another user.
+ *
+ * @param event The event containing the request body with userId and profile fields to update.
+ *
+ * @return A 200-response on success, 404-response if user not found, or 400-response with error details if validation fails.
+ */
+export const updateUser: Handler = async (event) => {
+    const body = request(event);
+    const userId = body?.userId;
+
+    if (!userId) {
+        return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
+    }
+
+    //Get user by userId / check if exists
+    const user = await getUserById(userId);
+    if (!user) {
+        return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
+    }
+
+    const userNew = {
+        ...body,
+        username: user.username,
+        communicationUserId: user.communicationUserId,
+    } as User;
+
+    // If profile data is provided, validate and check uniqueness
+    if (userNew.email) {
+        const existingUser = await getUserNameByEmail(userNew.email);
+        if (existingUser && existingUser !== user.username) {
+            return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+        }
+    }
+
+    // Save the updated profile
+    await saveUser(userNew);
+
+    return response(200, 'application/json', JSON.stringify({}));
 };
 
 /*
@@ -527,6 +620,110 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
     }).promise();
 };
 
+/** User profile functions **/
+
+/**
+ * Find a user by their email address.
+ *
+ * @param email  The normalized email address to search for.
+ *
+ * @return The username if found, undefined otherwise.
+ */
+const getUserNameByEmail = async (email: string): Promise<string | undefined> => {
+    const result = await ddb.query({
+        TableName: userProfilesTableName,
+        IndexName: 'Email',
+        KeyConditionExpression: 'Email = :email',
+        ExpressionAttributeValues: {
+            ':email': {S: email}
+        },
+        Limit: 1
+    }).promise();
+
+    return result.Items && result.Items.length > 0
+        ? result.Items[0].Username?.S
+        : undefined;
+};
+
+/**
+ * Get user profile information from the database.
+ *
+ * @param userId The users ID
+ *
+ * @return The User for the user, or undefined ig the user doesn't exist
+
+ */
+const getUserById = async (userId: UUID): Promise<User | undefined> => {
+    return getUserByName(getUsername(userId));
+}
+
+/**
+ * Get user profile information from the database.
+ *
+ * @param username The users name
+ *
+ * @return The User for the user, or undefined ig the user doesn't exist
+
+ */
+const getUserByName = async (username: string): Promise<User | undefined> => {
+    const commItem = (
+        await ddb
+            .getItem({
+                TableName: communicationUserIdsTableName,
+                Key: {
+                    Username: {S: username}
+                }
+            })
+            .promise()
+    ).Item;
+
+    if (!commItem?.CommunicationUserId?.S || !commItem?.Username?.S) {
+        return undefined;
+    }
+
+    const profileItem = (
+        await ddb
+            .getItem({
+                TableName: userProfilesTableName,
+                Key: {
+                    Username: {S: username}
+                }
+            })
+            .promise()
+    ).Item;
+
+    return {
+        username: commItem.Username.S,
+        communicationUserId: commItem.CommunicationUserId.S,
+        ...(profileItem?.FirstName?.S && {firstName: profileItem.FirstName.S}),
+        ...(profileItem?.LastName?.S && {lastName: profileItem.LastName.S}),
+        ...(profileItem?.Email?.S && {email: profileItem.Email.S}),
+        ...(profileItem?.Gender?.S && {gender: profileItem.Gender.S}),
+        ...(profileItem?.Birthdate?.S && {birthdate: profileItem.Birthdate.S}),
+        ...(profileItem?.Phone?.S && {phone: profileItem.Phone.S})
+    } as User;
+};
+
+/**
+ * Save or update user information in the database.
+ *
+ * @param user  The user.
+ */
+const saveUser = async (user: User): Promise<void> => {
+    await ddb.putItem({
+        TableName: userProfilesTableName,
+        Item: {
+            Username: {S: user.username},
+            ...(user.firstName && {FirstName: {S: user.firstName}}),
+            ...(user.lastName && {LastName: {S: user.lastName}}),
+            ...(user.email && {Email: {S: user.email}}),
+            ...(user.gender && {Gender: {S: user.gender}}),
+            ...(user.birthdate && {Birthdate: {S: user.birthdate}}),
+            ...(user.phone && {Phone: {S: user.phone}})
+        }
+    }).promise();
+};
+
 /**
  * Get an existing communication user id from the database for a given user.
  *
@@ -549,22 +746,22 @@ const getCommunicationUserIdentifier = async (username: string): Promise<Communi
 };
 
 /**
- * Create a new communication user for a given user and add it to the database.
+ * Create a new user, assign communication id, and add it to the database.
  *
  * @param username  The user to create a communication user identity for.
  *
- * @return The CommunicationUserIdentifier for the user.
+ * @return The User for the user.
  */
-const createCommunicationUserIdentifier = async (username: string): Promise<CommunicationUserIdentifier> => {
-    const communicationUserIdentifier = await communicationIdentityClient.createUser();
+const createUser = async (username: string): Promise<User> => {
+    const user = await communicationIdentityClient.createUser();
     await ddb.putItem({
         TableName: communicationUserIdsTableName,
         Item: {
             Username: { S: username },
-            CommunicationUserId: { S: communicationUserIdentifier.communicationUserId }
+            CommunicationUserId: { S: user.communicationUserId }
         }
     }).promise();
-    return communicationUserIdentifier;
+    return user as User;
 };
 
 /**
@@ -576,7 +773,7 @@ const createCommunicationUserIdentifier = async (username: string): Promise<Comm
  */
 const getOrCreateCommunicationUserIdentifier = async (username: string) => {
     const existingId = await getCommunicationUserIdentifier(username);
-    const result = existingId || await createCommunicationUserIdentifier(username);
+    const result = existingId || await createUser(username);
     console.debug(
         `${existingId ? 'Got' : 'Created'} communication user ID '${result.communicationUserId} for user ${username}'`
     );
