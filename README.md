@@ -6,6 +6,24 @@ AWS SAM backend for Tower.
 
 To deploy the service, configure the environment variables and execute the deploy-script.
 
+### Prerequisites
+
+For this service to work, you need to deploy Azure Communication Services to handle the actual calls, as well as a 
+system that handles authentication. The correct endpoints for both of these things are then passed as configuration 
+parameters to your actual deployment.
+
+For Instructions on how to create an Azure Communication Services resource, please have a look at the official
+[docs](https://learn.microsoft.com/en-us/azure/communication-services/quickstarts/create-communication-resource). If 
+it is legally possible for you to collect this data, you will probably also want to deploy a Log Analytics Workspace and 
+connect it with the Communication Service to give you insight into the calls. For details see the documentation on how
+to [enable logging](https://learn.microsoft.com/en-us/azure/communication-services/concepts/analytics/enable-logging)
+for Azure Communication services.
+
+For the authentication, you will need a webserver with an endpoint the backend can call to check if a user should be 
+authorized. The backend will call this endpoint for each user, providing the credentials through HTTP basic auth. If 
+the user should be authorized, the authentication server should answer `200 OK`. If the credentials are incorrect, 
+the server should usually answer `401 Unauthorized`.
+
 ### Configuration
 
 To configure the service, you will need to at a minimum supply values for the environment variables `AUTH_URL`,
@@ -24,16 +42,23 @@ the project will be built automatically by the deploy-script.
 
 Use `npm run deploy` to deploy the development configuration, and `npm run deploy -- --env production` to deploy the
 production configuration (aws-cli needs to be installed and logged in). All AWS resources will be created automatically. 
-When the script finishes, it outputs the url to the newly deployed backend, which can be used as is, or assigned to a
-custom domain using the AWS API Gateway Console.
+When the script finishes, it outputs the url to the newly deployed backend.
+
+The backend can be used as is, but you will probably want to assign it a custom domain. To do this, first add a 
+certificate for the domain you want to use in AWS Certificate Manager. Most of the time you will want an 
+edge-optimized domain (meaning that CloudFront will serve requests through whichever datacenter is topologically closest
+to the user). For this to work, you need to generate the certificate in `us-east-1`. If you create it in any other 
+region, you won't be able to select it when creating your domain. Once you have a certificate, you can add the 
+custom domain name to Amazon API Gateway, update your DNS-records to point to Amazon, and configure an API mapping 
+to map the domain name to the tower-backend API.
 
 During each deployment, a new temporary object will be created in an S3-bucket provided using the `AWS_S3_BUCKET` 
-configuration option. This object contains the packaged application. It is not needed during runtime and can be 
-deleted after the application deployment has finished. However, it can be useful to have old packages, since it 
+configuration option. This object contains the packaged application. It is unnecessary during runtime and can be 
+deleted after the application deployment has finished. However, it can be useful to have old packages since it 
 makes it easier to roll back changes. For this reason, the bucket is not emptied automatically. You might want to 
-empty it manually every once in a while (or set a deletion rule), to avoid unnecessary charges. This only applies to 
+empty it manually every once in a while (or set a deletion rule) to avoid unnecessary charges. This only applies to 
 the bucket used for deployment (the one provided by name in the configuration options). Any buckets the application 
-needs at runtime will be created with randomized names and their contents will be cleaned up automatically.
+needs at runtime will be created with randomized names, and their contents will be cleaned up automatically.
 
 You can pass `-l`, or `--disable-printing-logs` to make the output of the deployment script less verbose.
 
@@ -92,7 +117,7 @@ The access key to use to connect to Azure Communication Services.
 
 ### `HOURS`
 
-The regular opening hours for each day of the week, starting with Sunday. Days are separated by a colon character and
+The regular opening hours for each day of the week, starting with Sunday. Days are separated by a colon character, and
 multiple time intervals for the same day are separated by a comma. Each time interval is specified by a start and end
 time, each formatted as hhmm, separated by a slash.
 
@@ -102,8 +127,8 @@ specify `EXTRA_HOURS` without any regular hours, set `HOURS` to `::::::`.
 
 ### `EXTRA_HOURS`
 
-This is comma-separated list of time intervals, each formatted as YYYY-MM-DDThh:mm/hh:mm. The end time must be
-after the start time (you can not have an interval that crosses midnight). This is ignored if `HOURS` is unset.
+This is a comma-separated list of time intervals, each formatted as YYYY-MM-DDThh:mm/hh:mm. The end time must be
+after the start time (you cannot have an interval that crosses midnight). This is ignored if `HOURS` is unset.
 
 ### `HOLIDAYS`
 
@@ -125,7 +150,7 @@ The following endpoints are available on the backend, once deployed.
 ### `GET /`
 
 This endpoint will return some general information about the service. It can be used to ensure the api is online and 
-has a compatible version, and to check the opening hours. It will return a `message`, which is currently always 
+has a compatible version and to check the opening hours. It will return a `message`, which is currently always 
 `"Success"`, along with an `apiVersion`-string containing the major and minor version of the backend, and an 
 `openingHours`-object. The latter will give the current `time` (as hh:mm) in the time zone the service operates in, a 
 `status`, indicating whether the service is currently `"open"` or `"closed"`, a `description` with a human-readable 
@@ -179,6 +204,41 @@ requests to the backend. Since the UUID can be used without further authenticati
 information about the user (such as when and for how long the user has called), it should be treated as moderately 
 sensitive.
 
+Optionally, profile information can be provided during registration. If an email is provided, it must be unique across
+all users. All profile fields are optional and can also be set or updated later via the `/updateUser` endpoint.
+
+Request format:
+
+```
+{
+    firstName?: string,
+    lastName?: string,
+    email?: string,
+    gender?: string,
+    birthdate?: string (YYYY-MM-DD format),
+    phone?: string
+}
+```
+
+Example request (without profile):
+
+```json
+{}
+```
+
+Example request (with profile):
+
+```json
+{
+    "firstName": "Anna",
+    "lastName": "Müller",
+    "email": "anna.mueller@example.com",
+    "gender": "female",
+    "birthdate": "1990-05-15",
+    "phone": "+49123456789"
+}
+```
+
 Response format:
 
 ```
@@ -194,6 +254,10 @@ Example response:
     "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
 } 
 ```
+
+Error responses:
+
+- `{error: "Email already registered"}`
 
 ### `POST /requestAssistance`
 
@@ -257,7 +321,7 @@ This is done to reduce the number of times an assistant will respond to a reques
 lost the connection while waiting.
 
 The client specifies the id of the user who is waiting to be assisted in the request. Since there can only be one 
-assistance request per user at any given time, this is sufficient to determine the assistance request to update.
+assistance request per user at any given time, this is enough to determine the assistance request to update.
 
 The endpoint will send a 200-response if the request was successfully updated. A 404-response will be returned if the 
 request could not be found. The latter could mean that something has gone wrong, but it can also occur when an 
@@ -308,7 +372,7 @@ assistant. The backend will then remove the assistance request for the user maki
 assistance requests.
 
 The client specifies the id of the user who no longer wants to be assisted in the request. Since there can only be one
-assistance request per user at any given time, this is sufficient to determine the assistance request to remove.
+assistance request per user at any given time, this is enough to determine the assistance request to remove.
 
 This will return a 200-response if the request was successfully removed. It will return a 404-response if the 
 assistance request could not be found.
@@ -328,6 +392,127 @@ Example request:
     "userId":"908d4e54-18cd-41f1-80fc-57779a108947"
 } 
 ```
+
+### `POST /getUser`
+
+This endpoint retrieves an existing user's profile information. For now, no authentication is required - anyone with
+the userId can retrieve the profile.
+
+Request format:
+
+```
+{
+    userId: UUID
+}
+```
+
+Example request:
+
+```json
+{
+    "userId": "908d4e54-18cd-41f1-80fc-57779a108947"
+}
+```
+
+Response format:
+
+```
+{
+    user: {
+        username: string,
+        communicationUserId: string,
+        firstName?: string,
+        lastName?: string,
+        email?: string,
+        gender?: string,
+        birthdate?: string,
+        phone?: string
+    }
+}
+```
+
+Example response:
+
+```json
+{
+    "user": {
+        "username": "user_908d4e54-18cd-41f1-80fc-57779a108947",
+        "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963",
+        "firstName": "Anna",
+        "lastName": "Müller",
+        "email": "anna.mueller@example.com",
+        "gender": "female",
+        "birthdate": "1990-05-15",
+        "phone": "+49123456789"
+    }
+}
+```
+
+Error responses:
+
+- `{"error": "Need parameter: userId"}`
+- `{"error": "User not found"}`
+
+### `POST /updateUser`
+
+This endpoint allows updating an existing user's profile information. For now, no authentication is required - anyone
+with the userId can update the profile. The user must already exist (have been registered via the `/registerUser`
+endpoint).
+
+All profile fields are optional. Only the fields provided in the request will be updated; omitted fields will remain
+unchanged. If an email is provided, it must not be already registered by another user.
+
+Profile field validation rules:
+- `firstName`: 1-100 characters if provided
+- `lastName`: 1-100 characters if provided
+- `email`: Must be a valid email format (will be normalized to lowercase)
+- `gender`: Maximum 50 characters if provided
+- `birthdate`: Must be in YYYY-MM-DD format if provided
+- `phone`: 10-20 characters if provided
+
+Request format:
+
+```
+{
+    userId: UUID,
+    firstName?: string,
+    lastName?: string,
+    email?: string,
+    gender?: string,
+    birthdate?: string (YYYY-MM-DD format),
+    phone?: string
+}
+```
+
+Example request:
+
+```json
+{
+    "userId": "908d4e54-18cd-41f1-80fc-57779a108947",
+    "firstName": "Anna",
+    "lastName": "Müller",
+    "email": "anna.mueller@example.com",
+    "phone": "+49123456789"
+}
+```
+
+Response format:
+
+```
+{}
+```
+
+Example response:
+
+```json
+{}
+```
+
+Error responses:
+
+- `{"error": "Need parameter: userId"}`
+- `{"error": "Email already registered"}`
+- `{"error": "User not found"}`
 
 ### `GET /assistanceToken`
 
@@ -426,9 +611,9 @@ Example response:
 
 This will create a single-use URL the customer's app can use to upload an image to an S3-bucket. To prevent abuse, there 
 isn't an endpoint the end-user apps can use to freely upload data. Instead, when the assistant wants to take a photo,
-the app of the assistant will use this endpoint to generate an upload link that is only valid once.This upload link 
-is then provided to user's app, so it can upload the photo.The endpoint will return the `uploadURL`, along with a `key`
-that can be used to get a download url for the ressource later and the date the upload URL `expiresOn`.
+the app of the assistant will use this endpoint to generate an upload link that is only valid once. This upload link 
+is then provided to the user's app, so it can upload the photo. The endpoint will return the `uploadURL`, along with a 
+`key` that can be used to get a download url for the ressource later and the date the upload URL `expiresOn`.
 
 Response format:
 
