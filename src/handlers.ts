@@ -6,7 +6,17 @@
 //  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 
-import AWS from 'aws-sdk';
+import {
+    AttributeValue,
+    DeleteItemCommand,
+    DynamoDBClient,
+    GetItemCommand,
+    PutItemCommand,
+    QueryCommand,
+    QueryCommandInput,
+} from '@aws-sdk/client-dynamodb';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import https from 'https';
 import {
     APIGatewayAuthorizerResult,
@@ -23,14 +33,11 @@ import {
     TokenScope
 } from '@azure/communication-identity';
 import { AssistanceRequest, User, UserToken } from './types';
-import { AttributeMap, QueryInput } from 'aws-sdk/clients/dynamodb';
 import * as fs from 'node:fs';
 import { UUID, randomUUID } from 'node:crypto';
 
-AWS.config.update({ region: process.env.AWS_REGION! });
-
-const ddb = new AWS.DynamoDB();
-const s3 = new AWS.S3();
+const ddb = new DynamoDBClient({ region: process.env.AWS_REGION! });
+const s3 = new S3Client({ region: process.env.AWS_REGION! });
 
 // Read environment.
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
@@ -60,7 +67,7 @@ const communicationIdentityClient = new CommunicationIdentityClient(
     new AzureKeyCredential(communicationServicesAccesskey)
 );
 
-const ASSISTANCE_REQUESTS_BY_AGE_QUERY: QueryInput = {
+const ASSISTANCE_REQUESTS_BY_AGE_QUERY: QueryCommandInput = {
     TableName: assistanceRequestsTableName,
     IndexName: 'DateTime',
     KeyConditionExpression: '#pk = :pk',
@@ -348,12 +355,11 @@ export const createImageUploadUrl: Handler = async (_) => {
 
     // Get signed url from S3.
     console.info(`Creating signed upload url for ${key} in bucket ${uploadBucket}, expiring ${expiresOn}.`);
-    const uploadUrl = await s3.getSignedUrlPromise('putObject', {
+    const uploadUrl = await getSignedUrl(s3, new PutObjectCommand({
         Bucket: uploadBucket,
         Key: key,
-        Expires: SIGNED_UPLOAD_URL_EXPIRATION_SECONDS,
         ContentType: 'image/jpeg'
-    });
+    }), { expiresIn: SIGNED_UPLOAD_URL_EXPIRATION_SECONDS });
 
     return response(200, 'application/json', JSON.stringify({uploadUrl, key, expiresOn}));
 };
@@ -361,11 +367,11 @@ export const createImageUploadUrl: Handler = async (_) => {
 // noinspection JSUnusedGlobalSymbols
 /**
  * Create a single use file-download url.
- * 
+ *
  * This will create a signed url for downloading the image with a given key.
- * 
+ *
  * @param event The event object containing the request body with the key parameter needed for the request.
- * 
+ *
  * @return A 200-response with the signed url and its expiration timestamp.
  */
 export const createImageDownloadUrl: Handler = async (event) => {
@@ -378,11 +384,10 @@ export const createImageDownloadUrl: Handler = async (event) => {
 
     // Get signed url from S3.
     console.info(`Creating signed download url for ${key} in bucket ${uploadBucket}, expiring ${expiresOn}.`);
-    const downloadUrl = await s3.getSignedUrlPromise('getObject', {
+    const downloadUrl = await getSignedUrl(s3, new GetObjectCommand({
         Bucket: uploadBucket,
         Key: key,
-        Expires: SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS,
-    });
+    }), { expiresIn: SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS });
 
     return response(200, 'application/json', JSON.stringify({downloadUrl, expiresOn}));
 };
@@ -509,7 +514,7 @@ const AssistanceRequest = (
         CommunicationUserId,
         DateTime,
         TTL
-    }: AttributeMap
+    }: Record<string, AttributeValue>
 ): AssistanceRequest|undefined => {
     if (!Username?.S
         || !CommunicationUserId?.S
@@ -533,29 +538,29 @@ const getAssistanceRequestTtl = () => {
 
 // noinspection JSUnusedLocalSymbols
 const listAssistanceRequests = async (): Promise<AssistanceRequest[]> => {
-    const queryOutput = await ddb.query(ASSISTANCE_REQUESTS_BY_AGE_QUERY).promise();
+    const queryOutput = await ddb.send(new QueryCommand(ASSISTANCE_REQUESTS_BY_AGE_QUERY));
     return (queryOutput.Items || []).map(AssistanceRequest).filter((x): x is AssistanceRequest => !!x);
 };
 
 const getAssistanceRequest = async (user : User|undefined = undefined): Promise<AssistanceRequest|undefined> => {
     const item = user
         ? (
-            await ddb.getItem({
+            await ddb.send(new GetItemCommand({
                 TableName: assistanceRequestsTableName,
                 Key: {
                     Username: {S: user.username}
                 }
-            }).promise()
+            }))
         ).Item
-        : (await ddb.query({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}).promise()).Items?.at(0);
+        : (await ddb.send(new QueryCommand({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}))).Items?.at(0);
     if (!item) {return;}
     const assistanceRequest = AssistanceRequest(item);
-    if (!assistanceRequest) {await deleteAssistanceRequest(item.Username.S!)}
+    if (!assistanceRequest) {await deleteAssistanceRequest(item.Username?.S!)}
     return AssistanceRequest(item) || getAssistanceRequest(user);
 };
 
 const createAssistanceRequest = async (user: User, startDateTime: Date = new Date()): Promise<AssistanceRequest> => {
-    await ddb.putItem({
+    await ddb.send(new PutItemCommand({
         TableName: assistanceRequestsTableName,
         Item: {
             Username: {S: user.username},
@@ -565,7 +570,7 @@ const createAssistanceRequest = async (user: User, startDateTime: Date = new Dat
 
             TTL: getAssistanceRequestTtl()
         }
-    }).promise();
+    }));
     return {user, startDateTime}
 };
 
@@ -576,13 +581,13 @@ const updateAssistanceRequest = async (user: User): Promise<AssistanceRequest|un
 };
 
 const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequest|undefined> => {
-    const result = await ddb.deleteItem({
+    const result = await ddb.send(new DeleteItemCommand({
         TableName: assistanceRequestsTableName,
         ReturnValues: "ALL_OLD",
         Key: {
             Username: {S: username}
         }
-    }).promise();
+    }));
     if (!result.Attributes) {return;}
     return AssistanceRequest(result.Attributes);
 };
@@ -596,7 +601,7 @@ const popAssistanceRequest = async (): Promise<AssistanceRequest|undefined> => {
 };
 
 const logAssistance = async (caller: string, assistant: string, startDateTime: Date, acceptDateTime: Date) => {
-    await ddb.putItem({
+    await ddb.send(new PutItemCommand({
         TableName: callRecordsTableName,
         Item: {
             Caller: {S: caller},
@@ -605,11 +610,11 @@ const logAssistance = async (caller: string, assistant: string, startDateTime: D
             AcceptDateTime: {S: acceptDateTime.toISOString()},
             Meeting: {S: randomUUID()}
         }
-    }).promise();
+    }));
 };
 
 const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: Date) => {
-    await ddb.putItem({
+    await ddb.send(new PutItemCommand({
         TableName: callRecordsTableName,
         Item: {
             Caller: {S: caller},
@@ -617,7 +622,7 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
             EndDateTime: {S: endDateTime.toISOString()},
             Meeting: {S: randomUUID()}
         }
-    }).promise();
+    }));
 };
 
 /** User profile functions **/
@@ -630,7 +635,7 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
  * @return The username if found, undefined otherwise.
  */
 const getUserNameByEmail = async (email: string): Promise<string | undefined> => {
-    const result = await ddb.query({
+    const result = await ddb.send(new QueryCommand({
         TableName: userProfilesTableName,
         IndexName: 'Email',
         KeyConditionExpression: 'Email = :email',
@@ -638,7 +643,7 @@ const getUserNameByEmail = async (email: string): Promise<string | undefined> =>
             ':email': {S: email}
         },
         Limit: 1
-    }).promise();
+    }));
 
     return result.Items && result.Items.length > 0
         ? result.Items[0].Username?.S
@@ -667,14 +672,12 @@ const getUserById = async (userId: UUID): Promise<User | undefined> => {
  */
 const getUserByName = async (username: string): Promise<User | undefined> => {
     const commItem = (
-        await ddb
-            .getItem({
-                TableName: communicationUserIdsTableName,
-                Key: {
-                    Username: {S: username}
-                }
-            })
-            .promise()
+        await ddb.send(new GetItemCommand({
+            TableName: communicationUserIdsTableName,
+            Key: {
+                Username: {S: username}
+            }
+        }))
     ).Item;
 
     if (!commItem?.CommunicationUserId?.S || !commItem?.Username?.S) {
@@ -682,14 +685,12 @@ const getUserByName = async (username: string): Promise<User | undefined> => {
     }
 
     const profileItem = (
-        await ddb
-            .getItem({
-                TableName: userProfilesTableName,
-                Key: {
-                    Username: {S: username}
-                }
-            })
-            .promise()
+        await ddb.send(new GetItemCommand({
+            TableName: userProfilesTableName,
+            Key: {
+                Username: {S: username}
+            }
+        }))
     ).Item;
 
     return {
@@ -710,7 +711,7 @@ const getUserByName = async (username: string): Promise<User | undefined> => {
  * @param user  The user.
  */
 const saveUser = async (user: User): Promise<void> => {
-    await ddb.putItem({
+    await ddb.send(new PutItemCommand({
         TableName: userProfilesTableName,
         Item: {
             Username: {S: user.username},
@@ -721,7 +722,7 @@ const saveUser = async (user: User): Promise<void> => {
             ...(user.birthdate && {Birthdate: {S: user.birthdate}}),
             ...(user.phone && {Phone: {S: user.phone}})
         }
-    }).promise();
+    }));
 };
 
 /**
@@ -733,15 +734,13 @@ const saveUser = async (user: User): Promise<void> => {
  */
 const getCommunicationUserIdentifier = async (username: string): Promise<CommunicationUserIdentifier|undefined> => {
     const communicationUserId = (
-        await ddb
-            .getItem({
-                TableName: communicationUserIdsTableName,
-                Key: {
-                    Username: { S: username }
-                }
-            })
-            .promise()
-    ).Item?.CommunicationUserId.S;
+        await ddb.send(new GetItemCommand({
+            TableName: communicationUserIdsTableName,
+            Key: {
+                Username: { S: username }
+            }
+        }))
+    ).Item?.CommunicationUserId?.S;
     return communicationUserId && { communicationUserId } || undefined;
 };
 
@@ -754,13 +753,13 @@ const getCommunicationUserIdentifier = async (username: string): Promise<Communi
  */
 const createUser = async (username: string): Promise<User> => {
     const user = await communicationIdentityClient.createUser();
-    await ddb.putItem({
+    await ddb.send(new PutItemCommand({
         TableName: communicationUserIdsTableName,
         Item: {
             Username: { S: username },
             CommunicationUserId: { S: user.communicationUserId }
         }
-    }).promise();
+    }));
     return user as User;
 };
 
