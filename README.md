@@ -215,25 +215,25 @@ Request format:
     lastName?: string,
     email?: string,
     gender?: string,
-    birthdate?: string (YYYY-MM-DD format),
+    birthdate?: string,
     phone?: string
 }
 ```
 
-Example request (without profile):
+Example request (without the profile):
 
 ```json
 {}
 ```
 
-Example request (with profile):
+Example request (with the profile):
 
 ```json
 {
     "firstName": "Anna",
     "lastName": "Müller",
     "email": "anna.mueller@example.com",
-    "gender": "female",
+    "gender": "X",
     "birthdate": "1990-05-15",
     "phone": "+49123456789"
 }
@@ -303,7 +303,7 @@ Example response:
 {
     "userToken": {
         "user": {
-          "username": "theo.test",
+          "username": "user_908d4e54-18cd-41f1-80fc-57779a108947",
           "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963"
         },
         "token": "…",
@@ -395,7 +395,7 @@ Example request:
 
 ### `POST /getUser`
 
-This endpoint retrieves an existing user's profile information. For now, no authentication is required - anyone with
+This endpoint retrieves an existing user's profile information. For now, no authentication is required – anyone with
 the userId can retrieve the profile.
 
 Request format:
@@ -441,7 +441,7 @@ Example response:
         "firstName": "Anna",
         "lastName": "Müller",
         "email": "anna.mueller@example.com",
-        "gender": "female",
+        "gender": "X",
         "birthdate": "1990-05-15",
         "phone": "+49123456789"
     }
@@ -455,20 +455,12 @@ Error responses:
 
 ### `POST /updateUser`
 
-This endpoint allows updating an existing user's profile information. For now, no authentication is required - anyone
+This endpoint allows updating an existing user's profile information. For now, no authentication is required – anyone
 with the userId can update the profile. The user must already exist (have been registered via the `/registerUser`
 endpoint).
 
-All profile fields are optional. Only the fields provided in the request will be updated; omitted fields will remain
-unchanged. If an email is provided, it must not be already registered by another user.
-
-Profile field validation rules:
-- `firstName`: 1-100 characters if provided
-- `lastName`: 1-100 characters if provided
-- `email`: Must be a valid email format (will be normalized to lowercase)
-- `gender`: Maximum 50 characters if provided
-- `birthdate`: Must be in YYYY-MM-DD format if provided
-- `phone`: 10-20 characters if provided
+The full profile must be provided. Any fields missing in the request will be removed from the profile on the backend. If
+an email is provided, it must not be in use by another user.
 
 Request format:
 
@@ -479,7 +471,7 @@ Request format:
     lastName?: string,
     email?: string,
     gender?: string,
-    birthdate?: string (YYYY-MM-DD format),
+    birthdate?: string,
     phone?: string
 }
 ```
@@ -492,6 +484,8 @@ Example request:
     "firstName": "Anna",
     "lastName": "Müller",
     "email": "anna.mueller@example.com",
+    "gender": "X",
+    "birthdate": "1990-05-15",
     "phone": "+49123456789"
 }
 ```
@@ -557,7 +551,7 @@ Response format:
 ```
 {
     assistanceRequest: {
-        user: {username: string, communicationUserId: string},
+        user: {username: string},
         startDateTime: string
     }
 }
@@ -569,8 +563,7 @@ Example response:
 {
     "assistanceRequest": {
         "user": {
-            "username": "theo.test",
-            "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963"
+            "username": "user_908d4e54-18cd-41f1-80fc-57779a108947"
         },
         "startDateTime": "2025-01-08T19:27:59.759Z"
     }
@@ -579,15 +572,24 @@ Example response:
 
 ### `POST /beginAssistance`
 
-This will remove the oldest assistance request from the queue and return it. If there aren't any open assistance 
-requests, this endpoint will respond with a 404-response.
+This will remove the oldest assistance request from the queue and return it, including the full user profile. If there
+aren't any open assistance requests, this endpoint will respond with a 404-response.
 
 Response format:
 
 ```
 {
     assistanceRequest: {
-        user: {username: string, communicationUserId: string},
+        user: {
+            username: string,
+            communicationUserId: string,
+            firstName?: string,
+            lastName?: string,
+            email?: string,
+            gender?: string,
+            birthdate?: string,
+            phone?: string
+        },
         startDateTime: string
     }
 }
@@ -599,8 +601,14 @@ Example response:
 {
     "assistanceRequest": {
         "user": {
-            "username": "theo.test",
-            "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963"
+            "username": "user_908d4e54-18cd-41f1-80fc-57779a108947",
+            "communicationUserId": "8:acs:86423206-6599-4274-a6c6-3f9108a2ab41_00000024-04d3-a94b-59fe-ad3a0d00e963",
+            "firstName": "Anna",
+            "lastName": "Müller",
+            "email": "anna.mueller@example.com",
+            "gender": "X",
+            "birthdate": "1990-05-15",
+            "phone": "+49123456789"
         },
         "startDateTime": "2025-01-08T19:27:59.759Z"
     }
