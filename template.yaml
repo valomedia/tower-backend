@@ -383,6 +383,10 @@ Resources:
             TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CallRecords
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api

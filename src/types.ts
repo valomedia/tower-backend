@@ -75,8 +75,10 @@ export interface AssistanceRequest {
 
     /**
      * The User requesting assistance.
+     *
+     * This isn't always a fully populated user-object to save database requests.
      */
-    user: User;
+    user: {username: string};
 
     /**
      * The date and time at which the user requested the assistance.

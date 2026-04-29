@@ -204,7 +204,7 @@ export const requestAssistance: Handler = async (event) => {
     console.info(`User ${userId} is requesting assistance`);
     const username = getUsername(userId);
     const userToken = await getUserToken(
-        username,
+        await getOrCreateUser(username),
         ['voip.join'],
         {tokenExpiresInMinutes: ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES}
     );
@@ -262,7 +262,7 @@ export const cancelAssistance: Handler = async (event) => {
 
     console.info(`User ${userId} is giving up on getting assistance`);
     const username = getUsername(userId);
-    const assistanceRequest = await deleteAssistanceRequest(username);
+    const assistanceRequest = await deleteAssistanceRequest({username});
     if (assistanceRequest) {await logAbandonment(username, assistanceRequest.startDateTime, new Date());}
     return assistanceRequest
         ? response(200, 'application/json', '{}')
@@ -286,7 +286,7 @@ export const cancelAssistance: Handler = async (event) => {
 export const assistanceToken: Handler = async (event) => {
     const username = event.requestContext.authorizer.principalId;
     const userToken = await getUserToken(
-        username,
+        await getOrCreateUser(username),
         ['voip'],
         {tokenExpiresInMinutes: ASSISTANCE_TOKEN_LIFETIME_MINUTES});
     return response(200, 'application/json', JSON.stringify({userToken}));
@@ -319,17 +319,18 @@ export const offerAssistance: Handler = async (_) => {
  * @return A 200-response with the assistance request, or 404 if no assistance request is available anymore.
  */
 export const beginAssistance: Handler = async (event) => {
-    const username = event.requestContext.authorizer.principalId;
+    const assistant = event.requestContext.authorizer.principalId;
 
     const assistanceRequest = await popAssistanceRequest();
     if (!assistanceRequest) {
         console.info(`There is no meeting in the queue (presumably another assistant was faster to pick up).`);
         return response(404, 'application/json', JSON.stringify({message: 'No meeting found'}));
     }
+    const user = await getOrCreateUser(assistanceRequest.user.username)
 
-    console.info(`Assistant ${username} will assist ${assistanceRequest.user.username}`);
-    await logAssistance(assistanceRequest.user.username, username, assistanceRequest.startDateTime, new Date());
-    return response(200, 'application/json', JSON.stringify({assistanceRequest}));
+    console.info(`Assistant ${assistant} will assist ${assistanceRequest.user.username}`);
+    await logAssistance(user.username, assistant, assistanceRequest.startDateTime, new Date());
+    return response(200, 'application/json', JSON.stringify({assistanceRequest: {...assistanceRequest, user}}));
 };
 
 // noinspection JSUnusedGlobalSymbols
@@ -497,13 +498,11 @@ export const updateUser: Handler = async (event) => {
 const AssistanceRequest = (
     {
         Username,
-        CommunicationUserId,
         DateTime,
         TTL
     }: Record<string, AttributeValue>
 ): AssistanceRequest|undefined => {
     if (!Username?.S
-        || !CommunicationUserId?.S
         || !DateTime?.S
         || !TTL?.N
         || +TTL.N < Math.floor(Date.now() / 1000)
@@ -511,7 +510,6 @@ const AssistanceRequest = (
     return {
         user: {
             username: Username.S,
-            communicationUserId: CommunicationUserId.S
         },
         startDateTime: new Date(DateTime.S)
     };
@@ -566,7 +564,7 @@ const getAssistanceRequest = async (user : User|undefined = undefined): Promise<
         : (await ddb.send(new QueryCommand({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}))).Items?.at(0);
     if (!item) {return;}
     const assistanceRequest = AssistanceRequest(item);
-    if (!assistanceRequest) {await deleteAssistanceRequest(item.Username?.S!)}
+    if (!assistanceRequest) {await deleteAssistanceRequest({username: item.Username?.S!})}
     return AssistanceRequest(item) || getAssistanceRequest(user);
 };
 
@@ -577,8 +575,6 @@ const createAssistanceRequest = async (user: User, startDateTime: Date = new Dat
             Username: {S: user.username},
             PartitionKey: {S: "1"},
             DateTime: {S: startDateTime.toISOString()},
-            CommunicationUserId: {S: user.communicationUserId},
-
             TTL: getAssistanceRequestTtl()
         }
     }));
@@ -591,7 +587,7 @@ const updateAssistanceRequest = async (user: User): Promise<AssistanceRequest|un
     return createAssistanceRequest(user, assistanceRequest.startDateTime);
 };
 
-const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequest|undefined> => {
+const deleteAssistanceRequest = async ({username}: {username: string}): Promise<AssistanceRequest|undefined> => {
     const result = await ddb.send(new DeleteItemCommand({
         TableName: assistanceRequestsTableName,
         ReturnValues: "ALL_OLD",
@@ -606,7 +602,7 @@ const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequ
 const popAssistanceRequest = async (): Promise<AssistanceRequest|undefined> => {
     const assistanceRequest = await getAssistanceRequest();
     if (!assistanceRequest) {return;}
-    return (await deleteAssistanceRequest(assistanceRequest.user.username))
+    return (await deleteAssistanceRequest(assistanceRequest.user))
         ? assistanceRequest
         : popAssistanceRequest();
 };
@@ -738,14 +734,13 @@ const getOrCreateUser = async (username: string) =>
 /**
  * Get an access token for a customer.
  *
- * @param username  The name of the user to get an access token for.
+ * @param user      The user to get an access token for.
  * @param scopes    Scopes to include in the token.
  * @param options   Additional options for the token (used for setting expiry time).
  *
  * @return The access token for the customer.
  */
-const getUserToken = async (username: string, scopes: TokenScope[], options?: GetTokenOptions): Promise<UserToken> => {
-    const user = await getOrCreateUser(username);
+const getUserToken = async (user: User, scopes: TokenScope[], options?: GetTokenOptions): Promise<UserToken> => {
     const token = await communicationIdentityClient.getToken(user, scopes, options);
     console.debug(`Issued an access token with scope ${scopes} that expires at ${token.expiresOn}`);
     return {...token, user: user};
