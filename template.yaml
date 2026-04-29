@@ -290,6 +290,8 @@ Resources:
             TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -309,6 +311,8 @@ Resources:
             TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -345,6 +349,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
