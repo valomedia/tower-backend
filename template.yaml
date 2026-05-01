@@ -212,7 +212,7 @@ Resources:
   TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.index
+      Handler: handlers.indexHandler
       CodeUri: build/
       Events:
         Api1:
@@ -226,7 +226,7 @@ Resources:
   TowerBackendRegisterUserLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.registerUser
+      Handler: handlers.registerUserHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
@@ -245,7 +245,7 @@ Resources:
   TowerBackendGetUserLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.getUser
+      Handler: handlers.getUserHandler
       CodeUri: build/
       Policies:
         - DynamoDBReadPolicy:
@@ -264,7 +264,7 @@ Resources:
   TowerBackendUpdateUserLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.updateUser
+      Handler: handlers.updateUserHandler
       CodeUri: build/
       Policies:
         - DynamoDBReadPolicy:
@@ -283,13 +283,15 @@ Resources:
   TowerBackendRequestAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.requestAssistance
+      Handler: handlers.requestAssistanceHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -302,13 +304,15 @@ Resources:
   TowerBackendAwaitAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.awaitAssistance
+      Handler: handlers.awaitAssistanceHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -321,7 +325,7 @@ Resources:
   TowerBackendCancelAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.cancelAssistance
+      Handler: handlers.cancelAssistanceHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
@@ -340,11 +344,13 @@ Resources:
   TowerBackendAssistanceTokenLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.assistanceToken
+      Handler: handlers.assistanceTokenHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -355,7 +361,7 @@ Resources:
   TowerBackendOfferAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.offerAssistance
+      Handler: handlers.offerAssistanceHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
@@ -370,13 +376,17 @@ Resources:
   TowerBackendBeginAssistanceLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.beginAssistance
+      Handler: handlers.beginAssistanceHandler
       CodeUri: build/
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AssistanceRequests
         - DynamoDBCrudPolicy:
             TableName: !Ref CallRecords
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunicationUserIds
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
       Events:
         Api1:
           Type: Api
@@ -387,7 +397,7 @@ Resources:
   TowerBackendCreateImageUploadUrl:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.createImageUploadUrl
+      Handler: handlers.createImageUploadUrlHandler
       CodeUri: build/
       Policies:
         - S3WritePolicy:
@@ -402,7 +412,7 @@ Resources:
   TowerBackendCreateImageDownloadUrl:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: handlers.createImageDownloadUrl
+      Handler: handlers.createImageDownloadUrlHandler
       CodeUri: build/
       Policies:
         - S3ReadPolicy:
@@ -418,7 +428,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: build/
-      Handler: handlers.auth
+      Handler: handlers.authHandler
 Outputs:
   ApiURL:
     Description: "API endpoint URL for Prod environment"

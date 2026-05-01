@@ -10,16 +10,15 @@ import { CommunicationUserIdentifier } from '@azure/communication-common';
 import { CommunicationAccessToken } from '@azure/communication-identity';
 
 /**
- * A user associated with a CommunicationsUserIdentifier.
+ * Profile information for a user
  */
-export interface User extends CommunicationUserIdentifier {
+export interface UserProfile {
 
     /**
      * The username of the user.
      */
     username: string;
 
-    // 2026-04-14 - DH - added user profile fields
     /**
      * The given name of the user, if known.
      */
@@ -53,6 +52,11 @@ export interface User extends CommunicationUserIdentifier {
 }
 
 /**
+ * A user associated with a CommunicationsUserIdentifier.
+ */
+export interface User extends CommunicationUserIdentifier, UserProfile {}
+
+/**
  * A User associated with an access token.
  */
 export interface UserToken extends CommunicationAccessToken {
@@ -71,8 +75,10 @@ export interface AssistanceRequest {
 
     /**
      * The User requesting assistance.
+     *
+     * This isn't always a fully populated user-object to save database requests.
      */
-    user: User;
+    user: {username: string};
 
     /**
      * The date and time at which the user requested the assistance.

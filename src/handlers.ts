@@ -26,13 +26,12 @@ import {
     StatementEffect
 } from 'aws-lambda';
 import { AzureKeyCredential } from '@azure/core-auth';
-import { CommunicationUserIdentifier } from '@azure/communication-common';
 import {
     CommunicationIdentityClient,
     GetTokenOptions,
     TokenScope
 } from '@azure/communication-identity';
-import { AssistanceRequest, User, UserToken } from './types';
+import {AssistanceRequest, User, UserProfile, UserToken} from './types';
 import * as fs from 'node:fs';
 import { UUID, randomUUID } from 'node:crypto';
 
@@ -107,7 +106,7 @@ const SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS = ASSISTANCE_SESSION_MAXIMUM_DURATI
 /**
  * Return a success response.
  */
-export const index: Handler = async (_) => {
+export const indexHandler: Handler = async (_) => {
     const now = new Date();
     const dates = Array(NUMBER_OF_DAYS_OF_OPENING_HOURS_RETURNED_BY_INDEX_ENDPOINT)
         .fill(now)
@@ -164,23 +163,18 @@ export const index: Handler = async (_) => {
  *
  * @param event The event containing the optional request body with profile information (name, email, gender).
  *
- * @returns A 200-response with the userId the new user can use to contact the service.
+ * @returns A 200-response with the userId of the new user or a 400-response if the email is taken.
  */
-export const registerUser: Handler = async (event) => {
+export const registerUserHandler: Handler = async (event) => {
     const body = request(event);
     const userId = randomUUID();
-    const username = getUsername(userId);
+    const username = userIdToUsername(userId);
 
-    if (body?.email && await getUserNameByEmail(body.email)) {
+    if (body?.email && await getUsernameByEmail(body.email)) {
         return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
     }
 
-    await createUser(username);
-    await saveUser({
-        ...body,
-        username,
-        communicationUserId: '',
-    } as User);
+    await createUser({...body, username});
 
     return response(
         200,
@@ -201,16 +195,16 @@ export const registerUser: Handler = async (event) => {
  *
  * @return A 200-response with the ACS user id, access token and expiry time for the user requesting assistance.
  */
-export const requestAssistance: Handler = async (event) => {
+export const requestAssistanceHandler: Handler = async (event) => {
     const userId = request(event)?.userId;
     if (!isUUID(userId)) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
     }
 
     console.info(`User ${userId} is requesting assistance`);
-    const username = getUsername(userId);
+    const username = userIdToUsername(userId);
     const userToken = await getUserToken(
-        username,
+        await getOrCreateUser(username),
         ['voip.join'],
         {tokenExpiresInMinutes: ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES}
     );
@@ -233,15 +227,15 @@ export const requestAssistance: Handler = async (event) => {
  *
  * @return 200 if the assistance request was successfully updated, 404 if the assistance request was not found.
  */
-export const awaitAssistance: Handler = async (event) => {
+export const awaitAssistanceHandler: Handler = async (event) => {
     const userId = request(event)?.userId;
     if (!isUUID(userId)) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
     }
 
     console.info(`User ${userId} is waiting for assistance`);
-    const username = getUsername(userId);
-    const user = {username, ...(await getOrCreateCommunicationUserIdentifier(username))};
+    const username = userIdToUsername(userId);
+    const user = await getOrCreateUser(username);
     const position = (await listAssistanceRequests())
         .findIndex(assistanceRequest => assistanceRequest.user.username === user.username);
     return await updateAssistanceRequest(user)
@@ -260,15 +254,15 @@ export const awaitAssistance: Handler = async (event) => {
  *
  * @return 200 if the assistance request was successfully deleted, 404 if the assistance request was not found.
  */
-export const cancelAssistance: Handler = async (event) => {
+export const cancelAssistanceHandler: Handler = async (event) => {
     const userId = request(event)?.userId;
     if (!isUUID(userId)) {
         return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: userId' }));
     }
 
     console.info(`User ${userId} is giving up on getting assistance`);
-    const username = getUsername(userId);
-    const assistanceRequest = await deleteAssistanceRequest(username);
+    const username = userIdToUsername(userId);
+    const assistanceRequest = await deleteAssistanceRequest({username});
     if (assistanceRequest) {await logAbandonment(username, assistanceRequest.startDateTime, new Date());}
     return assistanceRequest
         ? response(200, 'application/json', '{}')
@@ -289,10 +283,10 @@ export const cancelAssistance: Handler = async (event) => {
  *
  * @return A 200-response with the ACS user id, access token and expiry time.
  */
-export const assistanceToken: Handler = async (event) => {
+export const assistanceTokenHandler: Handler = async (event) => {
     const username = event.requestContext.authorizer.principalId;
     const userToken = await getUserToken(
-        username,
+        await getOrCreateUser(username),
         ['voip'],
         {tokenExpiresInMinutes: ASSISTANCE_TOKEN_LIFETIME_MINUTES});
     return response(200, 'application/json', JSON.stringify({userToken}));
@@ -309,7 +303,7 @@ export const assistanceToken: Handler = async (event) => {
  *
  * @return A 200-response with the assistance request, if any, a 200-response with an empty object otherwise.
  */
-export const offerAssistance: Handler = async (_) => {
+export const offerAssistanceHandler: Handler = async (_) => {
     const assistanceRequest = (await getAssistanceRequest());
     return response(200, 'application/json', JSON.stringify({assistanceRequest}));
 };
@@ -324,18 +318,19 @@ export const offerAssistance: Handler = async (_) => {
  *
  * @return A 200-response with the assistance request, or 404 if no assistance request is available anymore.
  */
-export const beginAssistance: Handler = async (event) => {
-    const username = event.requestContext.authorizer.principalId;
+export const beginAssistanceHandler: Handler = async (event) => {
+    const assistant = event.requestContext.authorizer.principalId;
 
     const assistanceRequest = await popAssistanceRequest();
     if (!assistanceRequest) {
         console.info(`There is no meeting in the queue (presumably another assistant was faster to pick up).`);
         return response(404, 'application/json', JSON.stringify({message: 'No meeting found'}));
     }
+    const user = await getOrCreateUser(assistanceRequest.user.username);
 
-    console.info(`Assistant ${username} will assist ${assistanceRequest.user.username}`);
-    await logAssistance(assistanceRequest.user.username, username, assistanceRequest.startDateTime, new Date());
-    return response(200, 'application/json', JSON.stringify({assistanceRequest}));
+    console.info(`Assistant ${assistant} will assist ${assistanceRequest.user.username}`);
+    await logAssistance(user.username, assistant, assistanceRequest.startDateTime, new Date());
+    return response(200, 'application/json', JSON.stringify({assistanceRequest: {...assistanceRequest, user}}));
 };
 
 // noinspection JSUnusedGlobalSymbols
@@ -348,7 +343,7 @@ export const beginAssistance: Handler = async (event) => {
  *
  * @return A 200-response with the new file key, the signed url and its expiration timestamp.
  */
-export const createImageUploadUrl: Handler = async (_) => {
+export const createImageUploadUrlHandler: Handler = async (_) => {
     const randomId = Math.floor(Math.random() * 10 ** UPLOAD_KEY_ID_LENGTH);
     const key = `${randomId.toString().padStart(8, "0")}.jpeg`;
     const expiresOn = (new Date(Date.now() + SIGNED_UPLOAD_URL_EXPIRATION_SECONDS * 1000)).toISOString();
@@ -374,7 +369,7 @@ export const createImageUploadUrl: Handler = async (_) => {
  *
  * @return A 200-response with the signed url and its expiration timestamp.
  */
-export const createImageDownloadUrl: Handler = async (event) => {
+export const createImageDownloadUrlHandler: Handler = async (event) => {
     const key = request(event)?.key;
     const expiresOn = (new Date(Date.now() + SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS * 1000)).toISOString();
 
@@ -401,7 +396,7 @@ export const createImageDownloadUrl: Handler = async (event) => {
  *
  * @param event     The event object containing the authorization token from the request.
  */
-export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
+export const authHandler: Handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
     const token = event.authorizationToken;
     const principalId = Buffer.from(token.split(' ')[1], 'base64').toString('utf-8').split(':')[0];
 
@@ -440,15 +435,13 @@ export const auth: Handler = async (event: APIGatewayTokenAuthorizerEvent): Prom
  *
  * @return A 200-response with the user data on success, 404-response if user not found, or 400-response if userId is missing.
  */
-export const getUser: Handler = async (event) => {
-    const body = request(event);
-    const userId = body?.userId;
-
+export const getUserHandler: Handler = async (event) => {
+    const userId = request(event)?.userId;
     if (!userId) {
         return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
     }
 
-    const user = await getUserById(userId);
+    const user = await getUser(userIdToUsername(userId));
     if (!user) {
         return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
     }
@@ -470,36 +463,30 @@ export const getUser: Handler = async (event) => {
  *
  * @return A 200-response on success, 404-response if user not found, or 400-response with error details if validation fails.
  */
-export const updateUser: Handler = async (event) => {
+export const updateUserHandler: Handler = async (event) => {
     const body = request(event);
     const userId = body?.userId;
 
-    if (!userId) {
+    if (!body || !userId) {
         return response(400, 'application/json', JSON.stringify({error: 'Need parameter: userId'}));
     }
 
     //Get user by userId / check if exists
-    const user = await getUserById(userId);
+    const user = await getUser(userIdToUsername(userId));
     if (!user) {
         return response(404, 'application/json', JSON.stringify({error: 'User not found'}));
     }
 
-    const userNew = {
-        ...body,
-        username: user.username,
-        communicationUserId: user.communicationUserId,
-    } as User;
-
     // If profile data is provided, validate and check uniqueness
-    if (userNew.email) {
-        const existingUser = await getUserNameByEmail(userNew.email);
+    if (body.email) {
+        const existingUser = await getUsernameByEmail(body.email);
         if (existingUser && existingUser !== user.username) {
             return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
         }
     }
 
     // Save the updated profile
-    await saveUser(userNew);
+    await updateUserProfile({...body, username: user.username});
 
     return response(200, 'application/json', JSON.stringify({}));
 };
@@ -511,13 +498,11 @@ export const updateUser: Handler = async (event) => {
 const AssistanceRequest = (
     {
         Username,
-        CommunicationUserId,
         DateTime,
         TTL
     }: Record<string, AttributeValue>
 ): AssistanceRequest|undefined => {
     if (!Username?.S
-        || !CommunicationUserId?.S
         || !DateTime?.S
         || !TTL?.N
         || +TTL.N < Math.floor(Date.now() / 1000)
@@ -525,13 +510,37 @@ const AssistanceRequest = (
     return {
         user: {
             username: Username.S,
-            communicationUserId: CommunicationUserId.S
         },
         startDateTime: new Date(DateTime.S)
     };
 };
 
-const getAssistanceRequestTtl = () => {
+const User = (
+    {
+        Username,
+        CommunicationUserId,
+        FirstName,
+        LastName,
+        Gender,
+        Birthdate,
+        Phone,
+        Email
+    }: Record<string, AttributeValue>
+): User|undefined => {
+    if (!Username?.S || !CommunicationUserId?.S) {return;}
+    return {
+        username: Username.S,
+        communicationUserId: CommunicationUserId.S,
+        firstName: FirstName?.S,
+        lastName: LastName?.S,
+        gender: Gender?.S,
+        birthdate: Birthdate?.S,
+        phone: Phone?.S,
+        email: Email?.S
+    }
+};
+
+const calculateAssistanceRequestTtl = () => {
     // Set time-to-live to two minutes, causing stale requests to be automatically removed.
     return { N: `${Math.floor(Date.now() / 1000) + ASSISTANCE_REQUEST_KEEPALIVE_TIMEOUT_SECONDS }`};
 };
@@ -555,7 +564,7 @@ const getAssistanceRequest = async (user : User|undefined = undefined): Promise<
         : (await ddb.send(new QueryCommand({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}))).Items?.at(0);
     if (!item) {return;}
     const assistanceRequest = AssistanceRequest(item);
-    if (!assistanceRequest) {await deleteAssistanceRequest(item.Username?.S!)}
+    if (!assistanceRequest) {await deleteAssistanceRequest({username: item.Username?.S!})}
     return AssistanceRequest(item) || getAssistanceRequest(user);
 };
 
@@ -566,9 +575,7 @@ const createAssistanceRequest = async (user: User, startDateTime: Date = new Dat
             Username: {S: user.username},
             PartitionKey: {S: "1"},
             DateTime: {S: startDateTime.toISOString()},
-            CommunicationUserId: {S: user.communicationUserId},
-
-            TTL: getAssistanceRequestTtl()
+            TTL: calculateAssistanceRequestTtl()
         }
     }));
     return {user, startDateTime}
@@ -580,7 +587,7 @@ const updateAssistanceRequest = async (user: User): Promise<AssistanceRequest|un
     return createAssistanceRequest(user, assistanceRequest.startDateTime);
 };
 
-const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequest|undefined> => {
+const deleteAssistanceRequest = async ({username}: {username: string}): Promise<AssistanceRequest|undefined> => {
     const result = await ddb.send(new DeleteItemCommand({
         TableName: assistanceRequestsTableName,
         ReturnValues: "ALL_OLD",
@@ -595,7 +602,7 @@ const deleteAssistanceRequest = async (username: string): Promise<AssistanceRequ
 const popAssistanceRequest = async (): Promise<AssistanceRequest|undefined> => {
     const assistanceRequest = await getAssistanceRequest();
     if (!assistanceRequest) {return;}
-    return (await deleteAssistanceRequest(assistanceRequest.user.username))
+    return (await deleteAssistanceRequest(assistanceRequest.user))
         ? assistanceRequest
         : popAssistanceRequest();
 };
@@ -625,8 +632,6 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
     }));
 };
 
-/** User profile functions **/
-
 /**
  * Find a user by their email address.
  *
@@ -634,7 +639,7 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
  *
  * @return The username if found, undefined otherwise.
  */
-const getUserNameByEmail = async (email: string): Promise<string | undefined> => {
+const getUsernameByEmail = async (email: string): Promise<string | undefined> => {
     const result = await ddb.send(new QueryCommand({
         TableName: userProfilesTableName,
         IndexName: 'Email',
@@ -651,145 +656,80 @@ const getUserNameByEmail = async (email: string): Promise<string | undefined> =>
 };
 
 /**
- * Get user profile information from the database.
+ * Get a User from the database.
  *
- * @param userId The users ID
+ * @param username The username of the User to return.
  *
- * @return The User for the user, or undefined ig the user doesn't exist
-
+ * @return The User, or undefined if the User doesn't exist.
  */
-const getUserById = async (userId: UUID): Promise<User | undefined> => {
-    return getUserByName(getUsername(userId));
-}
-
-/**
- * Get user profile information from the database.
- *
- * @param username The users name
- *
- * @return The User for the user, or undefined ig the user doesn't exist
-
- */
-const getUserByName = async (username: string): Promise<User | undefined> => {
-    const commItem = (
-        await ddb.send(new GetItemCommand({
-            TableName: communicationUserIdsTableName,
-            Key: {
-                Username: {S: username}
-            }
-        }))
-    ).Item;
-
-    if (!commItem?.CommunicationUserId?.S || !commItem?.Username?.S) {
-        return undefined;
-    }
-
-    const profileItem = (
-        await ddb.send(new GetItemCommand({
-            TableName: userProfilesTableName,
-            Key: {
-                Username: {S: username}
-            }
-        }))
-    ).Item;
-
-    return {
-        username: commItem.Username.S,
-        communicationUserId: commItem.CommunicationUserId.S,
-        ...(profileItem?.FirstName?.S && {firstName: profileItem.FirstName.S}),
-        ...(profileItem?.LastName?.S && {lastName: profileItem.LastName.S}),
-        ...(profileItem?.Email?.S && {email: profileItem.Email.S}),
-        ...(profileItem?.Gender?.S && {gender: profileItem.Gender.S}),
-        ...(profileItem?.Birthdate?.S && {birthdate: profileItem.Birthdate.S}),
-        ...(profileItem?.Phone?.S && {phone: profileItem.Phone.S})
-    } as User;
+const getUser = async (username: string): Promise<User|undefined> => {
+    const [profileItem, commItem] = await Promise.all([
+        ddb.send(new GetItemCommand({TableName: userProfilesTableName, Key: {Username: {S: username}}})),
+        ddb.send(new GetItemCommand({TableName: communicationUserIdsTableName, Key: {Username: {S: username}}})),
+    ]);
+    return User({...profileItem.Item, ...commItem.Item});
 };
 
 /**
- * Save or update user information in the database.
+ * Create or update user profile information in the database.
  *
- * @param user  The user.
+ * @param profile  The UserProfile to save.
  */
-const saveUser = async (user: User): Promise<void> => {
+const updateUserProfile = async (profile: UserProfile): Promise<void> => {
     await ddb.send(new PutItemCommand({
         TableName: userProfilesTableName,
         Item: {
-            Username: {S: user.username},
-            ...(user.firstName && {FirstName: {S: user.firstName}}),
-            ...(user.lastName && {LastName: {S: user.lastName}}),
-            ...(user.email && {Email: {S: user.email}}),
-            ...(user.gender && {Gender: {S: user.gender}}),
-            ...(user.birthdate && {Birthdate: {S: user.birthdate}}),
-            ...(user.phone && {Phone: {S: user.phone}})
+            Username: {S: profile.username},
+            ...(profile.firstName && {FirstName: {S: profile.firstName}}),
+            ...(profile.lastName && {LastName: {S: profile.lastName}}),
+            ...(profile.email && {Email: {S: profile.email}}),
+            ...(profile.gender && {Gender: {S: profile.gender}}),
+            ...(profile.birthdate && {Birthdate: {S: profile.birthdate}}),
+            ...(profile.phone && {Phone: {S: profile.phone}})
         }
     }));
-};
-
-/**
- * Get an existing communication user id from the database for a given user.
- *
- * @param username  The user to look up the communication user id for.
- *
- * @return The CommunicationUserIdentifier for the user, if any.
- */
-const getCommunicationUserIdentifier = async (username: string): Promise<CommunicationUserIdentifier|undefined> => {
-    const communicationUserId = (
-        await ddb.send(new GetItemCommand({
-            TableName: communicationUserIdsTableName,
-            Key: {
-                Username: { S: username }
-            }
-        }))
-    ).Item?.CommunicationUserId?.S;
-    return communicationUserId && { communicationUserId } || undefined;
 };
 
 /**
  * Create a new user, assign communication id, and add it to the database.
  *
- * @param username  The user to create a communication user identity for.
+ * @param profile  The profile information for the new user.
  *
- * @return The User for the user.
+ * @return The created User.
  */
-const createUser = async (username: string): Promise<User> => {
-    const user = await communicationIdentityClient.createUser();
+const createUser = async (profile: UserProfile): Promise<User> => {
+    const user = {...await communicationIdentityClient.createUser(), ...profile};
     await ddb.send(new PutItemCommand({
         TableName: communicationUserIdsTableName,
         Item: {
-            Username: { S: username },
+            Username: { S: user.username },
             CommunicationUserId: { S: user.communicationUserId }
         }
     }));
-    return user as User;
+    await updateUserProfile(user);
+    return user;
 };
 
 /**
- * Get the communication user id for a given user, creating it, if it does not exist yet.
+ * Get a user from the database, creating it, if it does not exist yet.
  *
- * @param username  The user to get or create the communication user identity for.
+ * @param username  The user to get or create.
  *
- * @return The CommunicationUserIdentifier for the user.
+ * @return The requested User.
  */
-const getOrCreateCommunicationUserIdentifier = async (username: string) => {
-    const existingId = await getCommunicationUserIdentifier(username);
-    const result = existingId || await createUser(username);
-    console.debug(
-        `${existingId ? 'Got' : 'Created'} communication user ID '${result.communicationUserId} for user ${username}'`
-    );
-    return result;
-};
+const getOrCreateUser = async (username: string) =>
+    (await getUser(username)) || (await createUser({username}));
 
 /**
  * Get an access token for a customer.
  *
- * @param username  The name of the user to get an access token for.
+ * @param user      The user to get an access token for.
  * @param scopes    Scopes to include in the token.
  * @param options   Additional options for the token (used for setting expiry time).
  *
  * @return The access token for the customer.
  */
-const getUserToken = async (username: string, scopes: TokenScope[], options?: GetTokenOptions): Promise<UserToken> => {
-    const user = {username, ...(await getOrCreateCommunicationUserIdentifier(username))};
+const getUserToken = async (user: User, scopes: TokenScope[], options?: GetTokenOptions): Promise<UserToken> => {
     const token = await communicationIdentityClient.getToken(user, scopes, options);
     console.debug(`Issued an access token with scope ${scopes} that expires at ${token.expiresOn}`);
     return {...token, user: user};
@@ -865,4 +805,4 @@ const isUUID = (uuid: any): uuid is UUID =>
  *
  * @returns The username to use for the user with the given UUID.
  */
-const getUsername = (uuid: UUID) => 'user_' + uuid.toLowerCase();
+const userIdToUsername = (uuid: UUID) => 'user_' + uuid.toLowerCase();
