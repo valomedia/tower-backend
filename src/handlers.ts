@@ -662,24 +662,13 @@ const getUsernameByEmail = async (email: string): Promise<string | undefined> =>
  *
  * @return The User, or undefined if the User doesn't exist.
  */
-const getUser = async (username: string): Promise<User|undefined> => User({
-    ...(
-        await ddb.send(new GetItemCommand({
-            TableName: userProfilesTableName,
-            Key: {
-                Username: {S: username}
-            }
-        }))
-    ).Item,
-    ...(
-        await ddb.send(new GetItemCommand({
-            TableName: communicationUserIdsTableName,
-            Key: {
-                Username: {S: username}
-            }
-        }))
-    ).Item
-});
+const getUser = async (username: string): Promise<User|undefined> => {
+    const [profileItem, commItem] = await Promise.all([
+        ddb.send(new GetItemCommand({TableName: userProfilesTableName, Key: {Username: {S: username}}})),
+        ddb.send(new GetItemCommand({TableName: communicationUserIdsTableName, Key: {Username: {S: username}}})),
+    ]);
+    return User({...profileItem.Item, ...commItem.Item});
+};
 
 /**
  * Create or update user profile information in the database.
