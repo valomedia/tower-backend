@@ -160,20 +160,22 @@ spawnOrFail(
 console.log('\nDeploying serverless application');
 console.log(`Deploying to stage ${stage} of stack ${stack}`);
 console.log(`Using auth url ${authUrl}, ACS endpoint ${communicationServicesEndpoint}`);
+// Each entry is wrapped as Key="Value" so SAM accepts empty values and any whitespace in the value. SAM strips a
+// matching outer pair of quotes before parsing the Key=Value pair.
 let parameterOverrides = [
-    `"Region='${region}'"`,
-    `"StageName='${stage}'"`,
-    `"AuthUrl='${authUrl}'"`,
-    `"AllowOrigin='${allowOrigin || ''}'"`,
-    `"CommunicationServicesEndpoint='${communicationServicesEndpoint}'"`,
-    `"CommunicationServicesAccesskey='${communicationServicesAccesskey}'"`,
-    `"Hours='${hours || ''}'"`,
-    `"ExtraHours='${extraHours || ''}'"`,
-    `"Holidays='${holidays || ''}'"`,
-    `"HoursDescription='${hoursDescription || ''}'"`,
-    `"Tz='${tz || ''}'"`
-]
-    .filter(Boolean);
+    ['StageName', stage],
+    ['AuthUrl', authUrl],
+    ['AllowOrigin', allowOrigin],
+    ['CommunicationServicesEndpoint', communicationServicesEndpoint],
+    ['CommunicationServicesAccesskey', communicationServicesAccesskey],
+    ['Hours', hours],
+    ['ExtraHours', extraHours],
+    ['Holidays', holidays],
+    ['HoursDescription', hoursDescription],
+    ['Tz', tz],
+    ['MailFromAddress', mailFromAddress],
+    ['MailDomain', mailDomain]
+].map(([key, value]) => `${key}="${value || ''}"`);
 spawnOrFail(
     'sam',
     [
