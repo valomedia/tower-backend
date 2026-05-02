@@ -473,23 +473,23 @@ Outputs:
     Description: "API endpoint URL for Prod environment"
     Value: !Sub "https://${TowerApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/"
   MailDkimRecord1:
-    Description: "DKIM CNAME record 1 — add to DNS so SES can sign outgoing mail"
+    Description: "DKIM CNAME record 1 -- add to DNS so SES can sign outgoing mail"
     Condition: HasMailDomain
     Value: !Sub "${MailIdentity.DkimDNSTokenName1}. IN CNAME ${MailIdentity.DkimDNSTokenValue1}."
   MailDkimRecord2:
-    Description: "DKIM CNAME record 2 — add to DNS so SES can sign outgoing mail"
+    Description: "DKIM CNAME record 2 -- add to DNS so SES can sign outgoing mail"
     Condition: HasMailDomain
     Value: !Sub "${MailIdentity.DkimDNSTokenName2}. IN CNAME ${MailIdentity.DkimDNSTokenValue2}."
   MailDkimRecord3:
-    Description: "DKIM CNAME record 3 — add to DNS so SES can sign outgoing mail"
+    Description: "DKIM CNAME record 3 -- add to DNS so SES can sign outgoing mail"
     Condition: HasMailDomain
     Value: !Sub "${MailIdentity.DkimDNSTokenName3}. IN CNAME ${MailIdentity.DkimDNSTokenValue3}."
   MailFromMxRecord:
-    Description: "Custom MAIL FROM MX record — add to DNS for SPF/DMARC alignment"
+    Description: "Custom MAIL FROM MX record -- add to DNS for SPF/DMARC alignment"
     Condition: HasMailDomain
     Value: !Sub "bounces.${MailDomain}. IN MX 10 feedback-smtp.${AWS::Region}.amazonses.com."
   MailFromSpfRecord:
-    Description: "Custom MAIL FROM SPF record — add to DNS for SPF/DMARC alignment"
+    Description: "Custom MAIL FROM SPF record -- add to DNS for SPF/DMARC alignment"
     Condition: HasMailDomain
     Value: !Sub 'bounces.${MailDomain}. IN TXT "v=spf1 include:amazonses.com -all"'
   MailSpfRecord:
