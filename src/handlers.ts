@@ -16,6 +16,7 @@ import {
     QueryCommandInput,
 } from '@aws-sdk/client-dynamodb';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import https from 'https';
 import {
@@ -37,6 +38,7 @@ import { UUID, randomUUID } from 'node:crypto';
 
 const ddb = new DynamoDBClient({ region: process.env.AWS_REGION! });
 const s3 = new S3Client({ region: process.env.AWS_REGION! });
+const ses = new SESv2Client({ region: process.env.AWS_REGION! });
 
 // Read environment.
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
@@ -46,6 +48,7 @@ const userProfilesTableName = process.env.USER_PROFILES_TABLE_NAME!;
 const authUrl = process.env.AUTH_URL!;
 const communicationServicesEndpoint = process.env.COMMUNICATION_SERVICES_ENDPOINT!;
 const communicationServicesAccesskey = process.env.COMMUNICATION_SERVICES_ACCESSKEY!;
+const mailFromAddress = process.env.MAIL_FROM_ADDRESS;
 const hours = process.env.HOURS
     ? process.env.HOURS.split(":").map(intervals => intervals
         .split(",")
@@ -170,8 +173,19 @@ export const registerUserHandler: Handler = async (event) => {
     const userId = randomUUID();
     const username = userIdToUsername(userId);
 
-    if (body?.email && await getUsernameByEmail(body.email)) {
-        return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+    if (body?.email) {
+        if (!isValidEmail(body.email)) {
+            return response(400, 'application/json', JSON.stringify({error: 'Invalid email address'}));
+        }
+        if (await getUsernameByEmail(body.email)) {
+            return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+        }
+        try {
+            await sendEmailConfirmation(body.email);
+        } catch (err) {
+            console.error('Failed to send confirmation email', err);
+            return response(500, 'application/json', JSON.stringify({error: 'Failed to send confirmation email'}));
+        }
     }
 
     await createUser({...body, username});
@@ -479,9 +493,20 @@ export const updateUserHandler: Handler = async (event) => {
 
     // If profile data is provided, validate and check uniqueness
     if (body.email) {
+        if (!isValidEmail(body.email)) {
+            return response(400, 'application/json', JSON.stringify({error: 'Invalid email address'}));
+        }
         const existingUser = await getUsernameByEmail(body.email);
         if (existingUser && existingUser !== user.username) {
             return response(400, 'application/json', JSON.stringify({error: 'Email already registered'}));
+        }
+        if (body.email !== user.email) {
+            try {
+                await sendEmailConfirmation(body.email);
+            } catch (err) {
+                console.error('Failed to send confirmation email', err);
+                return response(500, 'application/json', JSON.stringify({error: 'Failed to send confirmation email'}));
+            }
         }
     }
 
@@ -628,6 +653,54 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
             StartDateTime: {S: startDateTime.toISOString()},
             EndDateTime: {S: endDateTime.toISOString()},
             Meeting: {S: randomUUID()}
+        }
+    }));
+};
+
+/**
+ * Check whether a string is a syntactically valid e-mail address.
+ *
+ * This is a deliberately loose check, intended only to reject obvious typos. It does not guarantee that the address
+ * actually exists or accepts mail.
+ *
+ * @param email  The string to validate.
+ *
+ * @return true if the string looks like a valid e-mail address, false otherwise.
+ */
+const isValidEmail = (email: string): boolean =>
+    typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+/**
+ * Send a confirmation e-mail to a user who has just added or changed their e-mail address.
+ *
+ * If no from-address is configured, sending is silently skipped (allowing deployments to opt out of e-mail entirely).
+ * Otherwise, any failure from SES is propagated to the caller, so the calling handler can decide how to surface it.
+ *
+ * @param recipient  The address to send the confirmation to.
+ */
+const sendEmailConfirmation = async (recipient: string): Promise<void> => {
+    if (!mailFromAddress) {
+        console.warn('MAIL_FROM_ADDRESS is not configured; skipping confirmation e-mail');
+        return;
+    }
+    await ses.send(new SendEmailCommand({
+        FromEmailAddress: mailFromAddress,
+        Destination: { ToAddresses: [recipient] },
+        Content: {
+            Simple: {
+                Subject: { Data: 'Deine E-Mail-Adresse wurde verknüpft', Charset: 'UTF-8' },
+                Body: {
+                    Text: {
+                        Data:
+                            'Hallo,\n\n' +
+                            'deine E-Mail-Adresse wurde mit einem Tower-Profil verknüpft.\n\n' +
+                            'Falls du das nicht warst, melde dich bitte unter webmaster@tower-assist.de.\n\n' +
+                            'Viele Grüße\n' +
+                            'Dein Tower-Team\n',
+                        Charset: 'UTF-8'
+                    }
+                }
+            }
         }
     }));
 };

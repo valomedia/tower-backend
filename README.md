@@ -143,6 +143,63 @@ This is a string describing the opening hours in a human-readable way. This is i
 
 Timezone to use for opening hours. If this is unset, the server's timezone will be used.
 
+### `MAIL_FROM_ADDRESS`
+
+The from-address used for confirmation e-mails sent when a user adds or updates an e-mail address on their profile.
+Either a bare address (`addr@domain`) or a `Display Name <addr@domain>` form may be used. Leave empty to disable
+e-mail sending entirely (in that case profile updates that include an e-mail address will silently succeed without
+sending a confirmation).
+
+The deployment derives the sending domain from this address (the part after the `@`, ignoring any display name),
+creates an AWS SES identity for it in the same region as `AWS_REGION`, and outputs the DNS records needed for
+verification. See the [E-Mail](#e-mail) section below for details.
+
+## E-Mail
+
+When a user adds or changes the e-mail address associated with their profile, the backend sends a short confirmation
+e-mail to the new address. This is implemented via Amazon SES.
+
+If you do not configure `MAIL_FROM_ADDRESS`, e-mail sending is disabled entirely. The `/registerUser` and
+`/updateUser` endpoints will then accept e-mail addresses as before, but no confirmation e-mail is sent. No SES
+resources are created in that case.
+
+### What the deployment creates
+
+When `MAIL_FROM_ADDRESS` is configured, the deployment derives a domain from it (the part after the `@`, ignoring any
+display name) and creates an SES domain identity for that domain in the same region as `AWS_REGION`. The identity is
+configured with:
+
+- Easy DKIM (RSA-2048), so outgoing mail is DKIM-signed.
+- A custom MAIL FROM subdomain (`bounces.<your-domain>`), so the envelope sender is on your own domain and SPF can
+  align with the `From:` header for DMARC.
+
+The IAM permissions needed for the Lambdas to call `ses:SendEmail` are also added automatically.
+
+### DNS records to add
+
+Until the DNS records below are in place, SES will not consider the identity verified and any send attempt will fail.
+The deployment outputs the exact records as CloudFormation stack outputs after each deploy:
+
+- `MailDkimRecord1`, `MailDkimRecord2`, `MailDkimRecord3` — three CNAMEs, required for DKIM.
+- `MailFromMxRecord`, `MailFromSpfRecord` — MX and TXT for the custom MAIL FROM subdomain, required for the MAIL FROM
+  domain to verify.
+- `MailSpfRecord`, `MailDmarcRecord` — recommended SPF and DMARC records on the from-domain itself. Tune `p=` and
+  `rua=` on the DMARC record to your needs.
+
+You can also re-print these records at any time without redeploying by running:
+
+```
+aws cloudformation describe-stacks --stack-name <your-stack> --region <your-region> --query 'Stacks[0].Outputs'
+```
+
+### Production access
+
+New AWS accounts have SES in *sandbox mode*, where you can only send to recipients whose addresses or domains have
+also been verified in SES. To send to arbitrary recipients (which is what this backend needs in production), open a
+case with AWS Support requesting production access for SES in your region. This is a one-time, account-wide change.
+Until production access is granted, only e-mails to verified recipients will be delivered; the rest will be rejected
+synchronously by SES, which the backend will surface as a 500-response from `/registerUser` or `/updateUser`.
+
 ## Api
 
 The following endpoints are available on the backend, once deployed.
@@ -204,8 +261,10 @@ requests to the backend. Since the UUID can be used without further authenticati
 information about the user (such as when and for how long the user has called), it should be treated as moderately 
 sensitive.
 
-Optionally, profile information can be provided during registration. If an email is provided, it must be unique across
-all users. All profile fields are optional and can also be set or updated later via the `/updateUser` endpoint.
+Optionally, profile information can be provided during registration. If an email is provided, it must be syntactically
+valid and unique across all users. When an e-mail address is provided, the backend will send a confirmation e-mail to
+that address before creating the user. If sending fails, the user is not created and an error response is returned.
+All profile fields are optional and can also be set or updated later via the `/updateUser` endpoint.
 
 Request format:
 
@@ -257,7 +316,9 @@ Example response:
 
 Error responses:
 
-- `{error: "Email already registered"}`
+- `{"error": "Invalid email address"}`
+- `{"error": "Email already registered"}`
+- `{"error": "Failed to send confirmation email"}` (500)
 
 ### `POST /requestAssistance`
 
@@ -460,7 +521,9 @@ with the userId can update the profile. The user must already exist (have been r
 endpoint).
 
 The full profile must be provided. Any fields missing in the request will be removed from the profile on the backend. If
-an email is provided, it must not be in use by another user.
+an email is provided, it must be syntactically valid and not be in use by another user. When the e-mail address is being
+added or changed (compared to the previously stored value), the backend will send a confirmation e-mail to the new
+address before saving the change. If sending fails, the profile is not updated and an error response is returned.
 
 Request format:
 
@@ -505,8 +568,10 @@ Example response:
 Error responses:
 
 - `{"error": "Need parameter: userId"}`
+- `{"error": "Invalid email address"}`
 - `{"error": "Email already registered"}`
 - `{"error": "User not found"}`
+- `{"error": "Failed to send confirmation email"}` (500)
 
 ### `GET /assistanceToken`
 

@@ -36,7 +36,9 @@ let
     extraHours,
     holidays,
     hoursDescription,
-    tz;
+    tz,
+    mailFromAddress,
+    mailDomain;
 
 let disablePrintingLogs = false;
 
@@ -119,6 +121,14 @@ function loadEnv() {
     holidays = process.env.HOLIDAYS;
     hoursDescription = process.env.HOURS_DESCRIPTION;
     tz = process.env.TZ;
+    mailFromAddress = process.env.MAIL_FROM_ADDRESS;
+    mailDomain = mailFromAddress
+        ? (mailFromAddress.match(/<([^>]+)>\s*$/)?.[1] ?? mailFromAddress).split('@')[1] ?? ''
+        : '';
+    if (mailFromAddress && !mailDomain) {
+        console.log(`Could not extract a domain from MAIL_FROM_ADDRESS=${mailFromAddress}`);
+        process.exit(1);
+    }
 
     if (hours && !hours.match(/^(((\d{4}\/\d{4},)*\d{4}\/\d{4})?:){6}((\d{4}\/\d{4},)*\d{4}\/\d{4})?$/)) {
         console.log(`Opening hours are formatted incorrectly`);
@@ -196,23 +206,47 @@ spawnOrFail(
     !disablePrintingLogs
 );
 
-if (!disablePrintingLogs) {
-    console.log('Tower backend URL: ');
+printStackOutputs();
+
+function printStackOutputs() {
+    const json = spawnOrFail(
+        'aws',
+        [
+            'cloudformation',
+            'describe-stacks',
+            '--stack-name',
+            stack,
+            '--query',
+            'Stacks[0].Outputs',
+            '--output',
+            'json',
+            '--region',
+            region
+        ],
+        null,
+        false
+    );
+    const outputs = JSON.parse(json);
+    const dnsRecords = [];
+    const other = [];
+    for (const o of outputs) {
+        const m = o.OutputValue.match(/^(\S+)\s+IN\s+(CNAME|MX|TXT)\s+(.+)$/);
+        if (m) {
+            dnsRecords.push({ name: m[1], type: m[2], value: m[3] });
+        } else {
+            other.push(o);
+        }
+    }
+    for (const o of other) {
+        console.log(`${o.OutputKey}: ${o.OutputValue}`);
+    }
+    if (dnsRecords.length) {
+        dnsRecords.sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type));
+        const nameW = Math.max(...dnsRecords.map(r => r.name.length));
+        const typeW = Math.max(...dnsRecords.map(r => r.type.length));
+        console.log('\nDNS records to add (zone file format):\n');
+        for (const r of dnsRecords) {
+            console.log(`${r.name.padEnd(nameW)} IN ${r.type.padEnd(typeW)} ${r.value}`);
+        }
+    }
 }
-spawnOrFail(
-    'aws',
-    [
-        'cloudformation',
-        'describe-stacks',
-        '--stack-name',
-        stack,
-        '--query',
-        'Stacks[0].Outputs[0].OutputValue',
-        '--output',
-        'text',
-        '--region',
-        region
-    ],
-    null,
-    !disablePrintingLogs
-);
