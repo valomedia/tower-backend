@@ -152,32 +152,9 @@ sending a confirmation).
 
 The deployment derives the sending domain from this address (the part after the `@`, ignoring any display name),
 creates an AWS SES identity for it in the same region as `AWS_REGION`, and outputs the DNS records needed for
-verification. See the [E-Mail](#e-mail) section below for details.
+verification. Until the DNS records are in place, SES will not consider the identity verified and any send attempt will
+fail.
 
-## E-Mail
-
-When a user adds or changes the e-mail address associated with their profile, the backend sends a short confirmation
-e-mail to the new address. This is implemented via Amazon SES.
-
-If you do not configure `MAIL_FROM_ADDRESS`, e-mail sending is disabled entirely. The `/registerUser` and
-`/updateUser` endpoints will then accept e-mail addresses as before, but no confirmation e-mail is sent. No SES
-resources are created in that case.
-
-### What the deployment creates
-
-When `MAIL_FROM_ADDRESS` is configured, the deployment derives a domain from it (the part after the `@`, ignoring any
-display name) and creates an SES domain identity for that domain in the same region as `AWS_REGION`. The identity is
-configured with:
-
-- Easy DKIM (RSA-2048), so outgoing mail is DKIM-signed.
-- A custom MAIL FROM subdomain (`bounces.<your-domain>`), so the envelope sender is on your own domain and SPF can
-  align with the `From:` header for DMARC.
-
-The IAM permissions needed for the Lambdas to call `ses:SendEmail` are also added automatically.
-
-### DNS records to add
-
-Until the DNS records below are in place, SES will not consider the identity verified and any send attempt will fail.
 The deployment outputs the exact records as CloudFormation stack outputs after each deploy:
 
 - `MailDkimRecord1`, `MailDkimRecord2`, `MailDkimRecord3` — three CNAMEs, required for DKIM.
@@ -191,8 +168,6 @@ You can also re-print these records at any time without redeploying by running:
 ```
 aws cloudformation describe-stacks --stack-name <your-stack> --region <your-region> --query 'Stacks[0].Outputs'
 ```
-
-### Production access
 
 New AWS accounts have SES in *sandbox mode*, where you can only send to recipients whose addresses or domains have
 also been verified in SES. To send to arbitrary recipients (which is what this backend needs in production), open a
@@ -318,7 +293,7 @@ Error responses:
 
 - `{"error": "Invalid email address"}`
 - `{"error": "Email already registered"}`
-- `{"error": "Failed to send confirmation email"}` (500)
+- `{"error": "Failed to send confirmation email"}`
 
 ### `POST /requestAssistance`
 
@@ -571,7 +546,7 @@ Error responses:
 - `{"error": "Invalid email address"}`
 - `{"error": "Email already registered"}`
 - `{"error": "User not found"}`
-- `{"error": "Failed to send confirmation email"}` (500)
+- `{"error": "Failed to send confirmation email"}`
 
 ### `GET /assistanceToken`
 
