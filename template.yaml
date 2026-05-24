@@ -42,6 +42,24 @@ Parameters:
     Description: The time zone to use for the opening hours
     Default: ""
     Type: String
+  MailFromAddress:
+    Description: >-
+      The from-address to use when sending confirmation e-mails. Either a bare address (addr@domain) or a
+      'Display Name <addr@domain>' form. Leave empty to disable e-mail sending entirely. Must be on the domain
+      specified by MailDomain.
+    Default: ""
+    Type: String
+  MailDomain:
+    Description: >-
+      The domain to use for sending confirmation e-mails. An SES domain identity is created for this domain, with
+      Easy DKIM and a custom MAIL FROM subdomain. The DNS records that need to be added for verification are
+      published as stack outputs. Leave empty to disable e-mail sending entirely (no SES identity is created in
+      that case). Must match the domain part of MailFromAddress.
+    Default: ""
+    Type: String
+
+Conditions:
+  HasMailDomain: !Not [!Equals [!Ref MailDomain, ""]]
 
 Globals:
   Function:
@@ -63,6 +81,7 @@ Globals:
         HOURS_DESCRIPTION: !Ref HoursDescription
         TZ: !Ref Tz
         UPLOAD_BUCKET: !Ref UploadBucket
+        MAIL_FROM_ADDRESS: !Ref MailFromAddress
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1
@@ -209,6 +228,18 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
+  MailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Condition: HasMailDomain
+    Properties:
+      EmailIdentity: !Ref MailDomain
+      DkimAttributes:
+        SigningEnabled: true
+      DkimSigningAttributes:
+        NextSigningKeyLength: RSA_2048_BIT
+      MailFromAttributes:
+        MailFromDomain: !Sub "bounces.${MailDomain}"
+        BehaviorOnMxFailure: USE_DEFAULT_VALUE
   TowerBackendIndexLambda:
     Type: AWS::Serverless::Function
     Properties:
@@ -233,6 +264,10 @@ Resources:
             TableName: !Ref CommunicationUserIds
         - DynamoDBCrudPolicy:
             TableName: !Ref UserProfiles
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: '*'
       Events:
         Api1:
           Type: Api
@@ -271,6 +306,10 @@ Resources:
             TableName: !Ref CommunicationUserIds
         - DynamoDBCrudPolicy:
             TableName: !Ref UserProfiles
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: '*'
       Events:
         Api1:
           Type: Api
@@ -433,3 +472,31 @@ Outputs:
   ApiURL:
     Description: "API endpoint URL for Prod environment"
     Value: !Sub "https://${TowerApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/"
+  MailDkimRecord1:
+    Description: "DKIM CNAME record 1 -- add to DNS so SES can sign outgoing mail"
+    Condition: HasMailDomain
+    Value: !Sub "${MailIdentity.DkimDNSTokenName1}. IN CNAME ${MailIdentity.DkimDNSTokenValue1}."
+  MailDkimRecord2:
+    Description: "DKIM CNAME record 2 -- add to DNS so SES can sign outgoing mail"
+    Condition: HasMailDomain
+    Value: !Sub "${MailIdentity.DkimDNSTokenName2}. IN CNAME ${MailIdentity.DkimDNSTokenValue2}."
+  MailDkimRecord3:
+    Description: "DKIM CNAME record 3 -- add to DNS so SES can sign outgoing mail"
+    Condition: HasMailDomain
+    Value: !Sub "${MailIdentity.DkimDNSTokenName3}. IN CNAME ${MailIdentity.DkimDNSTokenValue3}."
+  MailFromMxRecord:
+    Description: "Custom MAIL FROM MX record -- add to DNS for SPF/DMARC alignment"
+    Condition: HasMailDomain
+    Value: !Sub "bounces.${MailDomain}. IN MX 10 feedback-smtp.${AWS::Region}.amazonses.com."
+  MailFromSpfRecord:
+    Description: "Custom MAIL FROM SPF record -- add to DNS for SPF/DMARC alignment"
+    Condition: HasMailDomain
+    Value: !Sub 'bounces.${MailDomain}. IN TXT "v=spf1 include:amazonses.com -all"'
+  MailSpfRecord:
+    Description: "Recommended SPF record on the from-domain"
+    Condition: HasMailDomain
+    Value: !Sub '${MailDomain}. IN TXT "v=spf1 include:amazonses.com -all"'
+  MailDmarcRecord:
+    Description: "Recommended DMARC record on the from-domain (tune rua= so reports go to a mailbox that exists)"
+    Condition: HasMailDomain
+    Value: !Sub '_dmarc.${MailDomain}. IN TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@${MailDomain}"'
