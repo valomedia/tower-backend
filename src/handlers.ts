@@ -7,7 +7,6 @@
 //
 
 import {
-    AttributeValue,
     DeleteItemCommand,
     DynamoDBClient,
     GetItemCommand,
@@ -33,8 +32,18 @@ import {
     TokenScope
 } from '@azure/communication-identity';
 import {AssistanceRequest, User, UserProfile, UserToken} from './types';
+import {
+    assistanceRequestFromItem,
+    calculateOpeningHours,
+    isUUID,
+    isValidEmail,
+    request,
+    response,
+    userFromItem,
+    userIdToUsername
+} from './helpers';
 import * as fs from 'node:fs';
-import { UUID, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 const ddb = new DynamoDBClient({ region: process.env.AWS_REGION! });
 const s3 = new S3Client({ region: process.env.AWS_REGION! });
@@ -101,6 +110,9 @@ const SIGNED_UPLOAD_URL_EXPIRATION_SECONDS = 300;
 
 const SIGNED_DOWNLOAD_URL_EXPIRATION_SECONDS = ASSISTANCE_SESSION_MAXIMUM_DURATION_MINUTES * 60;
 
+const calculateConfiguredOpeningHours = (date: string): Date[][] =>
+    calculateOpeningHours(date, {hours, extraHours, holidays});
+
 /*
  * Handlers
  */
@@ -120,7 +132,7 @@ export const indexHandler: Handler = async (_) => {
             const d = date.getDate();
             return `${y}-${('' + m).padStart(2, '0')}-${('' + d).padStart(2, '0')}`;
         });
-    const openingHours = dates.map(calculateOpeningHours);
+    const openingHours = dates.map(calculateConfiguredOpeningHours);
 
     return response(
         200,
@@ -520,51 +532,6 @@ export const updateUserHandler: Handler = async (event) => {
  * Helpers
  */
 
-const AssistanceRequest = (
-    {
-        Username,
-        DateTime,
-        TTL
-    }: Record<string, AttributeValue>
-): AssistanceRequest|undefined => {
-    if (!Username?.S
-        || !DateTime?.S
-        || !TTL?.N
-        || +TTL.N < Math.floor(Date.now() / 1000)
-    ) {return;}
-    return {
-        user: {
-            username: Username.S,
-        },
-        startDateTime: new Date(DateTime.S)
-    };
-};
-
-const User = (
-    {
-        Username,
-        CommunicationUserId,
-        FirstName,
-        LastName,
-        Gender,
-        Birthdate,
-        Phone,
-        Email
-    }: Record<string, AttributeValue>
-): User|undefined => {
-    if (!Username?.S || !CommunicationUserId?.S) {return;}
-    return {
-        username: Username.S,
-        communicationUserId: CommunicationUserId.S,
-        firstName: FirstName?.S,
-        lastName: LastName?.S,
-        gender: Gender?.S,
-        birthdate: Birthdate?.S,
-        phone: Phone?.S,
-        email: Email?.S
-    }
-};
-
 const calculateAssistanceRequestTtl = () => {
     // Set time-to-live to two minutes, causing stale requests to be automatically removed.
     return { N: `${Math.floor(Date.now() / 1000) + ASSISTANCE_REQUEST_KEEPALIVE_TIMEOUT_SECONDS }`};
@@ -573,7 +540,7 @@ const calculateAssistanceRequestTtl = () => {
 // noinspection JSUnusedLocalSymbols
 const listAssistanceRequests = async (): Promise<AssistanceRequest[]> => {
     const queryOutput = await ddb.send(new QueryCommand(ASSISTANCE_REQUESTS_BY_AGE_QUERY));
-    return (queryOutput.Items || []).map(AssistanceRequest).filter((x): x is AssistanceRequest => !!x);
+    return (queryOutput.Items || []).map(assistanceRequestFromItem).filter((x): x is AssistanceRequest => !!x);
 };
 
 const getAssistanceRequest = async (user : User|undefined = undefined): Promise<AssistanceRequest|undefined> => {
@@ -588,9 +555,9 @@ const getAssistanceRequest = async (user : User|undefined = undefined): Promise<
         ).Item
         : (await ddb.send(new QueryCommand({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}))).Items?.at(0);
     if (!item) {return;}
-    const assistanceRequest = AssistanceRequest(item);
+    const assistanceRequest = assistanceRequestFromItem(item);
     if (!assistanceRequest) {await deleteAssistanceRequest({username: item.Username?.S!})}
-    return AssistanceRequest(item) || getAssistanceRequest(user);
+    return assistanceRequestFromItem(item) || getAssistanceRequest(user);
 };
 
 const createAssistanceRequest = async (user: User, startDateTime: Date = new Date()): Promise<AssistanceRequest> => {
@@ -621,7 +588,7 @@ const deleteAssistanceRequest = async ({username}: {username: string}): Promise<
         }
     }));
     if (!result.Attributes) {return;}
-    return AssistanceRequest(result.Attributes);
+    return assistanceRequestFromItem(result.Attributes);
 };
 
 const popAssistanceRequest = async (): Promise<AssistanceRequest|undefined> => {
@@ -656,19 +623,6 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
         }
     }));
 };
-
-/**
- * Check whether a string is a syntactically valid e-mail address.
- *
- * This is a deliberately loose check, intended only to reject obvious typos. It does not guarantee that the address
- * actually exists or accepts mail.
- *
- * @param email  The string to validate.
- *
- * @return true if the string looks like a valid e-mail address, false otherwise.
- */
-const isValidEmail = (email: string): boolean =>
-    typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 /**
  * Send a confirmation e-mail to a user who has just added or changed their e-mail address.
@@ -740,7 +694,7 @@ const getUser = async (username: string): Promise<User|undefined> => {
         ddb.send(new GetItemCommand({TableName: userProfilesTableName, Key: {Username: {S: username}}})),
         ddb.send(new GetItemCommand({TableName: communicationUserIdsTableName, Key: {Username: {S: username}}})),
     ]);
-    return User({...profileItem.Item, ...commItem.Item});
+    return userFromItem({...profileItem.Item, ...commItem.Item});
 };
 
 /**
@@ -831,51 +785,3 @@ const generatePolicy = (principalId: string, effect: StatementEffect): AuthRespo
         ]
     }
 });
-
-const request = ({body}: {body: string}): {[key: string]: any}|undefined => {
-    try {
-        const result = JSON.parse(body);
-        return typeof result == 'object' ? result : undefined;
-    } catch {}
-};
-
-const response = (statusCode: number, contentType: string, body: any, isBase64Encoded = false) => ({
-    statusCode: statusCode,
-    headers: {'Content-Type': contentType,},
-    body: body,
-    isBase64Encoded
-});
-
-/**
- * Calculate opening hours for a given date.
- *
- * @param date  The date to calculate the opening hours for, formatted as YYYY-MM-DD.
- *
- * @returns A list of time intervals, each specified by a tuple of a start and end Date.
- */
-const calculateOpeningHours = (date: string): Date[][] => [
-    !holidays.includes(date) && hours && hours[(new Date(date)).getUTCDay()].map(x => x.map(y => date + "T" + y)),
-    extraHours.filter(([x]) => x.startsWith(date))
-]
-    .flat()
-    .filter((x): x is string[] => !!x)
-    .map(interval => interval.map(date => {
-        const components = date.split(/[-T:]/);
-        return new Date(+components[0], +components[1] - 1, +components[2], +components[3], +components[4])
-    }));
-
-const isUUID = (uuid: any): uuid is UUID =>
-    typeof uuid == 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){4}[0-9a-f]{8}$/i.test(uuid);
-
-/**
- * Get the username for a given UUID.
- *
- * End users currently do not need to create an account. Instead, each device will register for a random UUID when the
- * user first uses the service. Since we normally have human-readable usernames, we need to map this UUID to the actual
- * username to be used internally. Currently, this is done by just prefixing the UUID with the string "user_".
- *
- * @param uuid The UUID to calculate the username for.
- *
- * @returns The username to use for the user with the given UUID.
- */
-const userIdToUsername = (uuid: UUID) => 'user_' + uuid.toLowerCase();
