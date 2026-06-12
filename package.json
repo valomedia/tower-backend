@@ -6,7 +6,7 @@
     "build": "node scripts/build.js",
     "deploy": "node scripts/deploy.js",
     "clean": "node scripts/clean.js",
-    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js"
+    "test": "npm install --prefix src && tsc -p tsconfig.test.json && NODE_PATH=src/node_modules node --test build-test/test/*.test.js"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.5.0",

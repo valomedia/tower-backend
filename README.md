@@ -612,13 +612,15 @@ Example response:
 
 ### `POST /beginAssistance`
 
-This will remove the oldest assistance request from the queue and return it, including the full user profile. If there
-aren't any open assistance requests, this endpoint will respond with a 404-response.
+This will remove the oldest assistance request from the queue and return it, including the full user profile and a
+meeting id that can later be passed to `/endAssistance`. If there aren't any open assistance requests, this endpoint
+will respond with a 404-response.
 
 Response format:
 
 ```
 {
+    meeting: string,
     assistanceRequest: {
         user: {
             username: string,
@@ -639,6 +641,7 @@ Example response:
 
 ```json
 {
+    "meeting": "3ef07231-bc85-4e66-a331-6a017e289723",
     "assistanceRequest": {
         "user": {
             "username": "user_908d4e54-18cd-41f1-80fc-57779a108947",
@@ -654,6 +657,48 @@ Example response:
     }
 }
 ```
+
+### `POST /endAssistance`
+
+This records that an answered assistance call has ended. The `meeting` is the id returned by `/beginAssistance`.
+Set `nonBillable` to `true` to exclude the call from future billable minute totals; omitted or `false` keeps the call
+billable.
+
+Request format:
+
+```
+{
+    meeting: string,
+    nonBillable?: boolean
+}
+```
+
+Example request:
+
+```json
+{
+    "meeting": "3ef07231-bc85-4e66-a331-6a017e289723",
+    "nonBillable": true
+}
+```
+
+Response format:
+
+```
+{}
+```
+
+Example response:
+
+```json
+{}
+```
+
+Error responses:
+
+- `{"error": "Need parameter: meeting"}`
+- `{"error": "Parameter nonBillable must be a boolean"}`
+- `{"message": "Open meeting not found"}`
 
 ### `POST /createImageUploadUrl`
 

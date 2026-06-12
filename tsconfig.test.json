@@ -15,7 +15,11 @@
 
     "rootDir": ".",
     "outDir": "build-test",
+    "baseUrl": ".",
+    "paths": {
+      "*": ["src/node_modules/*", "node_modules/*", "*"]
+    },
     "types": ["node"]
   },
-  "include": ["src/helpers.ts", "test/**/*.test.ts"]
+  "include": ["src/helpers.ts", "src/handlers.ts", "test/**/*.test.ts"]
 }
