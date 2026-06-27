@@ -6,12 +6,10 @@
     "build": "node scripts/build.js",
     "deploy": "node scripts/deploy.js",
     "clean": "node scripts/clean.js",
-    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js"
+    "test": "node scripts/test.js"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.5.0",
-    "fs-extra": "^11.1.1",
-    "@types/fs-extra": "^11.0.4",
-    "typescript": "^5.5.3"
+    "fs-extra": "^11.1.1"
   }
 }
