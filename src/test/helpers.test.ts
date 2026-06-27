@@ -16,7 +16,7 @@ import {
     response,
     userFromItem,
     userIdToUsername
-} from '../src/helpers';
+} from '../helpers';
 
 test('request parses JSON object bodies and ignores invalid bodies', () => {
     assert.deepEqual(request({body: '{"userId":"abc"}'}), {userId: 'abc'});

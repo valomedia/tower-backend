@@ -24,6 +24,6 @@ const { spawnOrFail } = require('./lib');
 
 fs.copyFileSync(paths.lambdaPackageJson, path.resolve(paths.build, 'package.json'));
 fs.copyFileSync(paths.lambdaPackageLockJson, path.resolve(paths.build, 'package-lock.json'));
-spawnOrFail('npm', ['install'], {cwd: paths.src}, false);
-spawnOrFail('npm', ['install'], {cwd: paths.build,}, false);
-spawnOrFail('npx', ['tsc']);
+spawnOrFail('npm', ['ci', '--include=dev'], {cwd: paths.src}, false);
+spawnOrFail('npm', ['ci', '--omit=dev'], {cwd: paths.build}, false);
+spawnOrFail('npx', ['tsc', '-p', paths.tsConfig], {cwd: paths.src});
