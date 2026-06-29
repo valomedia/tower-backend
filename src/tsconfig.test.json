@@ -14,12 +14,8 @@
     "removeComments": true,
 
     "rootDir": ".",
-    "outDir": "build-test",
-    "baseUrl": ".",
-    "paths": {
-      "*": ["src/node_modules/*", "node_modules/*", "*"]
-    },
+    "outDir": "../build-test",
     "types": ["node"]
   },
-  "include": ["src/helpers.ts", "src/handlers.ts", "test/**/*.test.ts"]
+  "include": ["helpers.ts", "handlers.ts", "test/**/*.test.ts"]
 }

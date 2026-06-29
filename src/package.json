@@ -9,8 +9,15 @@
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/client-sesv2": "^3.0.0",
-    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0"
+  },
+  "scripts": {
+    "test": "tsc -p tsconfig.test.json && NODE_PATH=./node_modules node --test ../build-test/test/*.test.js"
+  },
+  "devDependencies": {
     "@types/aws-lambda": "^8.10.140",
-    "@types/uuid": "^10.0.0"
+    "@types/node": "^24.0.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.5.3"
   }
 }

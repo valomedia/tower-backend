@@ -6,20 +6,10 @@
     "build": "node scripts/build.js",
     "deploy": "node scripts/deploy.js",
     "clean": "node scripts/clean.js",
-    "test": "tsc -p tsconfig.test.json && node --test build-test/test/*.test.js"
+    "test": "node scripts/test.js"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1037.0",
-    "@aws-sdk/client-s3": "^3.1037.0",
-    "@aws-sdk/client-sesv2": "^3.1041.0",
-    "@aws-sdk/s3-request-presigner": "^3.1037.0",
-    "@azure/communication-common": "^2.4.0",
-    "@azure/communication-identity": "^1.3.1",
-    "@azure/core-auth": "^1.10.1",
     "@dotenvx/dotenvx": "^1.5.0",
-    "@types/aws-lambda": "^8.10.161",
-    "@types/fs-extra": "^11.0.4",
-    "fs-extra": "^11.1.1",
-    "typescript": "^5.5.3"
+    "fs-extra": "^11.1.1"
   }
 }

@@ -15,7 +15,7 @@ import {
     QueryCommand,
     UpdateItemCommand
 } from '@aws-sdk/client-dynamodb';
-import {isUUID} from '../src/helpers';
+import {isUUID} from '../helpers';
 
 process.env.AWS_REGION = 'eu-central-1';
 process.env.ASSISTANCE_REQUESTS_TABLE_NAME = 'AssistanceRequests';
@@ -38,7 +38,7 @@ const callHandler = async (handler: any, body: unknown, principalId = 'assistant
 }, {}, () => {});
 
 test('beginAssistanceHandler returns a meeting id and stores billable call timestamps', async () => {
-    const {beginAssistanceHandler} = await import('../src/handlers.js');
+    const {beginAssistanceHandler} = await import('../handlers.js');
     const startDateTime = '2026-06-12T12:00:00.000Z';
     const futureTtl = Math.floor(Date.now() / 1000) + 60;
     const commands: any[] = [];
@@ -110,7 +110,7 @@ test('beginAssistanceHandler returns a meeting id and stores billable call times
 });
 
 test('endAssistanceHandler records end timestamp and non-billable flag for the assistant meeting', async () => {
-    const {endAssistanceHandler} = await import('../src/handlers.js');
+    const {endAssistanceHandler} = await import('../handlers.js');
     const meeting = '3ef07231-bc85-4e66-a331-6a017e289723';
     let updateCommand: UpdateItemCommand | undefined;
 
@@ -141,7 +141,7 @@ test('endAssistanceHandler records end timestamp and non-billable flag for the a
 });
 
 test('endAssistanceHandler defaults to billable calls', async () => {
-    const {endAssistanceHandler} = await import('../src/handlers.js');
+    const {endAssistanceHandler} = await import('../handlers.js');
     const meeting = '3ef07231-bc85-4e66-a331-6a017e289723';
     let updateCommand: UpdateItemCommand | undefined;
 
@@ -161,7 +161,7 @@ test('endAssistanceHandler defaults to billable calls', async () => {
 });
 
 test('endAssistanceHandler validates request body before writing', async () => {
-    const {endAssistanceHandler} = await import('../src/handlers.js');
+    const {endAssistanceHandler} = await import('../handlers.js');
     const send = mock.method(DynamoDBClient.prototype, 'send', async () => {
         throw new Error('DynamoDB should not be called for invalid requests');
     });
@@ -184,7 +184,7 @@ test('endAssistanceHandler validates request body before writing', async () => {
 });
 
 test('endAssistanceHandler returns 404 for missing, already ended, or different-assistant meetings', async () => {
-    const {endAssistanceHandler} = await import('../src/handlers.js');
+    const {endAssistanceHandler} = await import('../handlers.js');
     const send = mock.method(DynamoDBClient.prototype, 'send', async () => {
         const err = new Error('condition failed');
         err.name = 'ConditionalCheckFailedException';
