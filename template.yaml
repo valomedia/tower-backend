@@ -433,6 +433,21 @@ Resources:
             RestApiId: !Ref TowerApi
             Path: /beginAssistance
             Method: POST
+  TowerBackendEndAssistanceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.endAssistanceHandler
+      CodeUri: build/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CallRecords
+      Events:
+        Api1:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TowerApi
+            Path: /endAssistance
+            Method: POST
   TowerBackendCreateImageUploadUrl:
     Type: AWS::Serverless::Function
     Properties:

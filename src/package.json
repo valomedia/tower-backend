@@ -12,7 +12,7 @@
     "@aws-sdk/s3-request-presigner": "^3.0.0"
   },
   "scripts": {
-    "test": "tsc -p tsconfig.test.json && node --test ../build-test/test/*.test.js"
+    "test": "tsc -p tsconfig.test.json && NODE_PATH=./node_modules node --test ../build-test/test/*.test.js"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.140",

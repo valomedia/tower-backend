@@ -17,5 +17,5 @@
     "outDir": "../build-test",
     "types": ["node"]
   },
-  "include": ["helpers.ts", "test/**/*.test.ts"]
+  "include": ["helpers.ts", "handlers.ts", "test/**/*.test.ts"]
 }

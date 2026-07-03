@@ -13,6 +13,7 @@ import {
     PutItemCommand,
     QueryCommand,
     QueryCommandInput,
+    UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2';
@@ -355,8 +356,39 @@ export const beginAssistanceHandler: Handler = async (event) => {
     const user = await getOrCreateUser(assistanceRequest.user.username);
 
     console.info(`Assistant ${assistant} will assist ${assistanceRequest.user.username}`);
-    await logAssistance(user.username, assistant, assistanceRequest.startDateTime, new Date());
-    return response(200, 'application/json', JSON.stringify({assistanceRequest: {...assistanceRequest, user}}));
+    const meeting = await logAssistance(user.username, assistant, assistanceRequest.startDateTime, new Date());
+    return response(200, 'application/json', JSON.stringify({meeting, assistanceRequest: {...assistanceRequest, user}}));
+};
+
+// noinspection JSUnusedGlobalSymbols
+/**
+ * End an assistance call.
+ *
+ * This records when an answered assistance call ended and whether the call should count towards billable usage.
+ * The staff app passes the meeting id returned by /beginAssistance. Calls are scoped to the authenticated assistant,
+ * so one assistant cannot end another assistant's call record.
+ *
+ * @param event The event containing the request body with the meeting id and optional nonBillable flag.
+ *
+ * @return A 200-response if the call was ended, 404 if no matching open call exists.
+ */
+export const endAssistanceHandler: Handler = async (event) => {
+    const assistant = event.requestContext.authorizer.principalId;
+    const body = request(event);
+    const meeting = body?.meeting;
+    const nonBillable = body?.nonBillable;
+
+    if (!isUUID(meeting)) {
+        return response(400, 'application/json', JSON.stringify({ error: 'Need parameter: meeting' }));
+    }
+    if (nonBillable !== undefined && typeof nonBillable !== 'boolean') {
+        return response(400, 'application/json', JSON.stringify({ error: 'Parameter nonBillable must be a boolean' }));
+    }
+
+    console.info(`Assistant ${assistant} ended meeting ${meeting}`);
+    return await logAssistanceEnd(meeting, assistant, new Date(), nonBillable !== true)
+        ? response(200, 'application/json', '{}')
+        : response(404, 'application/json', JSON.stringify({message: 'Open meeting not found'}));
 };
 
 // noinspection JSUnusedGlobalSymbols
@@ -599,7 +631,8 @@ const popAssistanceRequest = async (): Promise<AssistanceRequest|undefined> => {
         : popAssistanceRequest();
 };
 
-const logAssistance = async (caller: string, assistant: string, startDateTime: Date, acceptDateTime: Date) => {
+const logAssistance = async (caller: string, assistant: string, startDateTime: Date, acceptDateTime: Date): Promise<string> => {
+    const meeting = randomUUID();
     await ddb.send(new PutItemCommand({
         TableName: callRecordsTableName,
         Item: {
@@ -607,9 +640,41 @@ const logAssistance = async (caller: string, assistant: string, startDateTime: D
             Assistant: {S: assistant},
             StartDateTime: {S: startDateTime.toISOString()},
             AcceptDateTime: {S: acceptDateTime.toISOString()},
-            Meeting: {S: randomUUID()}
+            Billable: {BOOL: true},
+            Meeting: {S: meeting}
         }
     }));
+    return meeting;
+};
+
+const logAssistanceEnd = async (
+    meeting: string,
+    assistant: string,
+    endDateTime: Date,
+    billable: boolean
+): Promise<boolean> => {
+    try {
+        await ddb.send(new UpdateItemCommand({
+            TableName: callRecordsTableName,
+            Key: {
+                Meeting: {S: meeting}
+            },
+            UpdateExpression: 'SET EndDateTime = :endDateTime, Billable = :billable',
+            ConditionExpression: 'attribute_exists(Meeting) AND Assistant = :assistant AND attribute_not_exists(EndDateTime)',
+            ExpressionAttributeValues: {
+                ':endDateTime': {S: endDateTime.toISOString()},
+                ':billable': {BOOL: billable},
+                ':assistant': {S: assistant}
+            }
+        }));
+        return true;
+    } catch (err) {
+        if (typeof err === 'object' && err !== null && 'name' in err
+            && err.name === 'ConditionalCheckFailedException') {
+            return false;
+        }
+        throw err;
+    }
 };
 
 const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: Date) => {
@@ -619,6 +684,7 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
             Caller: {S: caller},
             StartDateTime: {S: startDateTime.toISOString()},
             EndDateTime: {S: endDateTime.toISOString()},
+            Billable: {BOOL: false},
             Meeting: {S: randomUUID()}
         }
     }));
