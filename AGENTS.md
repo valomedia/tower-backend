@@ -35,6 +35,8 @@ Do not move Lambda dependencies into the root package unless the runtime/build l
 - `npm ci` installs the root script dependencies.
 - `npm test` installs `src` dependencies, compiles tests with `src/tsconfig.test.json`,
   and runs `node --test` against `build-test/test/*.test.js`.
+- `npm run lint` installs `src` dependencies and runs TypeScript static analysis
+  with `tsc --noEmit` using the root `tsconfig.json`.
 - `npm run build` installs `src` dependencies,
   prepares production dependencies in `build/`,
   and compiles `src/handlers.ts` using the root `tsconfig.json`.
