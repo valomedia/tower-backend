@@ -16,4 +16,4 @@ const paths = require('../config/paths');
 const { spawnOrFail } = require('./lib');
 
 spawnOrFail('npm', ['ci', '--include=dev'], {cwd: paths.src}, false);
-spawnOrFail('npx', ['tsc', '--noEmit', '-p', paths.tsConfig], {cwd: paths.src});
+spawnOrFail('npm', ['run', 'lint'], {cwd: paths.src});
