@@ -2,8 +2,6 @@
 //  helpers.test.ts
 //  tower-backend
 //
-//  Created by OpenClaw on 2026-06-10.
-//
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
