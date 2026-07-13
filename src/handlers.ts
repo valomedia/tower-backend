@@ -66,7 +66,7 @@ const hours = process.env.HOURS
     )
     : undefined;
 const extraHours = process.env.EXTRA_HOURS!.split(",").filter(Boolean).map(interval => {
-    const [date, startTime, endTime] = interval.split(/[\/T]/);
+    const [date, startTime, endTime] = interval.split(/[/T]/);
     return [date + "T" + startTime, date + "T" + endTime];
 });
 const holidays = process.env.HOLIDAYS!.split(",").filter(Boolean);
@@ -587,8 +587,11 @@ const getAssistanceRequest = async (user : User|undefined = undefined): Promise<
         : (await ddb.send(new QueryCommand({...ASSISTANCE_REQUESTS_BY_AGE_QUERY, Limit: 1}))).Items?.at(0);
     if (!item) {return;}
     const assistanceRequest = assistanceRequestFromItem(item);
-    if (!assistanceRequest) {await deleteAssistanceRequest({username: item.Username?.S!})}
-    return assistanceRequestFromItem(item) || getAssistanceRequest(user);
+    if (!assistanceRequest) {
+        const username = item.Username?.S;
+        if (username) {await deleteAssistanceRequest({username})}
+    }
+    return assistanceRequest || getAssistanceRequest(user);
 };
 
 const createAssistanceRequest = async (user: User, startDateTime: Date = new Date()): Promise<AssistanceRequest> => {

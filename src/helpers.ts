@@ -91,7 +91,9 @@ export const request = ({body}: {body: string}): {[key: string]: any}|undefined 
     try {
         const result = JSON.parse(body);
         return typeof result == 'object' ? result : undefined;
-    } catch {}
+    } catch {
+        return undefined;
+    }
 };
 
 export const response = (statusCode: number, contentType: string, body: any, isBase64Encoded = false) => ({
