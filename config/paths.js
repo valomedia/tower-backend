@@ -2,7 +2,6 @@
 //  paths.js
 //  tower-backend
 //
-//  Created by Jean-Pierre Höhmann on 2024-07-03.
 //  Copyright © 2024 valo.media GmbH. All rights reserved.
 //
 

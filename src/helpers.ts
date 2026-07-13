@@ -2,8 +2,6 @@
 //  helpers.ts
 //  tower-backend
 //
-//  Created by OpenClaw on 2026-06-10.
-//
 
 import type { UUID } from 'node:crypto';
 
