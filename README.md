@@ -74,6 +74,12 @@ also be found in `.env`, `.env.development` and `.env.production`.
 
 This is the AWS region the application will be deployed to.
 
+### `AWS_PROFILE`
+
+This is the name of the AWS named profile to use for deployment. When set, it is passed to the `aws` and `sam` CLIs via
+`--profile`, so you can deploy into a different AWS account without changing the active profile in your shell. Leave it
+empty (the default) to use the CLIs' default credential resolution.
+
 ### `AWS_S3_BUCKET`
 
 This is the name of a bucket that the application will be packaged in. If the bucket doesn't exist, it will be 

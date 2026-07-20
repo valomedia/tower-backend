@@ -24,6 +24,7 @@ const env = require('../config/env');
 let
     config,
     region,
+    profile,
     bucket,
     stack,
     stage,
@@ -50,11 +51,17 @@ function usage() {
     console.log(`  -h, --help                   Show help and exit`);
 }
 
+// Returns the `--profile <profile>` arguments to pass to the aws and sam CLIs, or an empty array when no AWS_PROFILE is
+// configured (in which case the CLIs fall back to their default credential resolution).
+function profileArgs() {
+    return profile ? ['--profile', profile] : [];
+}
+
 function ensureBucket() {
-    const s3Api = spawnSync('aws', ['s3api', 'head-bucket', '--bucket', bucket, '--region', region]);
+    const s3Api = spawnSync('aws', ['s3api', 'head-bucket', '--bucket', bucket, '--region', region, ...profileArgs()]);
     if (s3Api.status !== 0) {
         console.log(`Creating S3 bucket ${bucket}`);
-        const s3 = spawnSync('aws', ['s3', 'mb', `s3://${bucket}`, '--region', region]);
+        const s3 = spawnSync('aws', ['s3', 'mb', `s3://${bucket}`, '--region', region, ...profileArgs()]);
         if (s3.status !== 0) {
             console.log(`Failed to create bucket: ${s3.status}`);
             console.log((s3.stderr || s3.stdout).toString());
@@ -108,6 +115,7 @@ function loadEnv() {
         }
     }
     region = process.env.AWS_REGION;
+    profile = process.env.AWS_PROFILE;
     bucket = process.env.AWS_S3_BUCKET;
     stack = process.env.AWS_CLOUDFORMATION_STACK;
     stage = process.env.AWS_SAM_STAGE_NAME;
@@ -161,7 +169,7 @@ console.log(`Using region ${region}, bucket ${bucket}`);
 ensureBucket();
 spawnOrFail(
     'sam',
-    ['package', '--s3-bucket', bucket, '--output-template-file', 'build/packaged.yaml', '--region', region],
+    ['package', '--s3-bucket', bucket, '--output-template-file', 'build/packaged.yaml', '--region', region, ...profileArgs()],
     {},
     false
 );
@@ -199,6 +207,7 @@ spawnOrFail(
         'CAPABILITY_IAM',
         '--region',
         region,
+        ...profileArgs(),
         '--no-fail-on-empty-changeset'
     ],
     null,
@@ -220,7 +229,8 @@ function printStackOutputs() {
             '--output',
             'json',
             '--region',
-            region
+            region,
+            ...profileArgs()
         ],
         null,
         false
