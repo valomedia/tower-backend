@@ -51,17 +51,32 @@ function usage() {
     console.log(`  -h, --help                   Show help and exit`);
 }
 
-// Returns the `--profile <profile>` arguments to pass to the aws and sam CLIs, or an empty array when no AWS_PROFILE is
-// configured (in which case the CLIs fall back to their default credential resolution).
-function profileArgs() {
-    return profile ? ['--profile', profile] : [];
-}
-
 function ensureBucket() {
-    const s3Api = spawnSync('aws', ['s3api', 'head-bucket', '--bucket', bucket, '--region', region, ...profileArgs()]);
+    const s3Api = spawnSync(
+        'aws',
+        [
+            's3api',
+            'head-bucket',
+            '--bucket',
+            bucket,
+            '--region',
+            region,
+            ...(profile ? ['--profile', profile] : [])
+        ]
+    );
     if (s3Api.status !== 0) {
         console.log(`Creating S3 bucket ${bucket}`);
-        const s3 = spawnSync('aws', ['s3', 'mb', `s3://${bucket}`, '--region', region, ...profileArgs()]);
+        const s3 = spawnSync(
+            'aws',
+            [
+                's3',
+                'mb',
+                `s3://${bucket}`,
+                '--region',
+                region,
+                ...(profile ? ['--profile', profile] : [])
+            ]
+        );
         if (s3.status !== 0) {
             console.log(`Failed to create bucket: ${s3.status}`);
             console.log((s3.stderr || s3.stdout).toString());
@@ -169,7 +184,16 @@ console.log(`Using region ${region}, bucket ${bucket}`);
 ensureBucket();
 spawnOrFail(
     'sam',
-    ['package', '--s3-bucket', bucket, '--output-template-file', 'build/packaged.yaml', '--region', region, ...profileArgs()],
+    [
+        'package',
+        '--s3-bucket',
+        bucket,
+        '--output-template-file',
+        'build/packaged.yaml',
+        '--region',
+        region,
+        ...(profile ? ['--profile', profile] : [])
+    ],
     {},
     false
 );
@@ -207,7 +231,7 @@ spawnOrFail(
         'CAPABILITY_IAM',
         '--region',
         region,
-        ...profileArgs(),
+        ...(profile ? ['--profile', profile] : []),
         '--no-fail-on-empty-changeset'
     ],
     null,
@@ -230,7 +254,7 @@ function printStackOutputs() {
             'json',
             '--region',
             region,
-            ...profileArgs()
+            ...(profile ? ['--profile', profile] : [])
         ],
         null,
         false
