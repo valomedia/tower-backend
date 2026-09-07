@@ -62,6 +62,15 @@ needs at runtime will be created with randomized names, and their contents will 
 
 You can pass `-l`, or `--disable-printing-logs` to make the output of the deployment script less verbose.
 
+### Destruction
+
+To completely remove an instance of the service, remove the following:
+
+* Azure Communication Service (and the associated Log Analytics Workspace if you have one)
+* The AWS SAM application
+* The upload bucket
+* If applicable the custom domain along with its certificate
+
 ## Configuration Options
 
 Configuration options can be specified through environment variables, or in `.env.local`, `.env.local.development`,
