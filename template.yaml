@@ -57,6 +57,12 @@ Parameters:
       that case). Must match the domain part of MailFromAddress.
     Default: ""
     Type: String
+  SourceUrl:
+    Description: >-
+      The url where the source code for the current deployment can be found.
+      Required for legal reasons.
+    Default: ""
+    Type: String
 
 Conditions:
   HasMailDomain: !Not [!Equals [!Ref MailDomain, ""]]
@@ -82,6 +88,7 @@ Globals:
         TZ: !Ref Tz
         UPLOAD_BUCKET: !Ref UploadBucket
         MAIL_FROM_ADDRESS: !Ref MailFromAddress
+        SOURCE_URL: !Ref SourceUrl
   Api:
     # Workaround for https://github.com/aws/serverless-application-model/issues/191
     OpenApiVersion: 3.0.1

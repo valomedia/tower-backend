@@ -38,7 +38,8 @@ let
     hoursDescription,
     tz,
     mailFromAddress,
-    mailDomain;
+    mailDomain,
+    sourceUrl;
 
 let disablePrintingLogs = false;
 
@@ -123,7 +124,14 @@ function parseArgs() {
 function loadEnv() {
     dotenv.config({ path: env(config) });
 
-    for (let i of ['AWS_REGION', 'AWS_CLOUDFORMATION_STACK', 'AWS_S3_BUCKET', 'AWS_SAM_STAGE_NAME', 'AUTH_URL']) {
+    for (let i of [
+        'AWS_REGION',
+        'AWS_CLOUDFORMATION_STACK',
+        'AWS_S3_BUCKET',
+        'AWS_SAM_STAGE_NAME',
+        'AUTH_URL',
+        'SOURCE_URL'
+    ]) {
         if (!process.env[i] || !process.env[i].trim()) {
             console.log(`Missing required environment variable ${i}`);
             process.exit(1);
@@ -147,6 +155,8 @@ function loadEnv() {
     mailDomain = mailFromAddress
         ? (mailFromAddress.match(/<([^>]+)>\s*$/)?.[1] ?? mailFromAddress).split('@')[1] ?? ''
         : '';
+    sourceUrl = process.env.SOURCE_URL;
+
     if (mailFromAddress && !mailDomain) {
         console.log(`Could not extract a domain from MAIL_FROM_ADDRESS=${mailFromAddress}`);
         process.exit(1);
@@ -215,7 +225,8 @@ let parameterOverrides = [
     ['HoursDescription', hoursDescription],
     ['Tz', tz],
     ['MailFromAddress', mailFromAddress],
-    ['MailDomain', mailDomain]
+    ['MailDomain', mailDomain],
+    ['SourceUrl', sourceUrl]
 ].map(([key, value]) => `${key}="${value || ''}"`);
 spawnOrFail(
     'sam',

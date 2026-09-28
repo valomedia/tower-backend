@@ -72,6 +72,7 @@ const extraHours = process.env.EXTRA_HOURS!.split(",").filter(Boolean).map(inter
 const holidays = process.env.HOLIDAYS!.split(",").filter(Boolean);
 const hoursDescription = process.env.HOURS_DESCRIPTION!;
 const uploadBucket = process.env.UPLOAD_BUCKET!;
+const sourceUrl = process.env.SOURCE_URL!;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
@@ -140,6 +141,7 @@ export const indexHandler: Handler = async (_) => {
         JSON.stringify({
             message: 'Success',
             apiVersion: API_VERSION,
+            sourceUrl,
             openingHours: {
                 time: ('' + now.getHours()).padStart(2, '0') + ':' + ('' + now.getMinutes()).padStart(2, '0'),
                 status: (!hours || openingHours[0].some(([start, end]) => start < now && now < end))
