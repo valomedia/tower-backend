@@ -302,7 +302,7 @@ export const cancelAssistanceHandler: Handler = async (event) => {
  * This will issue an access token for azure communication services for the user that made the request (creating an
  * identity for the user, if none exists yet). Unlike the tokens issued to end users, this token will have the
  * necessary scope to make calls (since technically the calls are initiated by the assistant when accepting the
- * request). The token will also have a much longer life-time of 24 hours, since the assistants will typically be
+ * request). The token will also have a much longer life-time of 12 hours, since the assistants will typically be
  * online for long stretches of time, unlike the users, which only make one call at a time.
  *
  * @param event The event object containing the requestContext, used to associate the request with an identity.
