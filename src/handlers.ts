@@ -1,9 +1,20 @@
-//
-//  handlers.ts
-//  tower-backend
-//
-//  Copyright © 2024 valo.media GmbH. All rights reserved.
-//
+/*
+ * Copyright (c) 2023-2026 valo.media GmbH
+ * All rights reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 import {
     DeleteItemCommand,
@@ -72,6 +83,7 @@ const extraHours = process.env.EXTRA_HOURS!.split(",").filter(Boolean).map(inter
 const holidays = process.env.HOLIDAYS!.split(",").filter(Boolean);
 const hoursDescription = process.env.HOURS_DESCRIPTION!;
 const uploadBucket = process.env.UPLOAD_BUCKET!;
+const sourceUrl = process.env.SOURCE_URL!;
 
 const communicationIdentityClient = new CommunicationIdentityClient(
     communicationServicesEndpoint,
@@ -140,6 +152,7 @@ export const indexHandler: Handler = async (_) => {
         JSON.stringify({
             message: 'Success',
             apiVersion: API_VERSION,
+            sourceUrl,
             openingHours: {
                 time: ('' + now.getHours()).padStart(2, '0') + ':' + ('' + now.getMinutes()).padStart(2, '0'),
                 status: (!hours || openingHours[0].some(([start, end]) => start < now && now < end))

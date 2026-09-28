@@ -190,19 +190,37 @@ case with AWS Support requesting production access for SES in your region. This 
 Until production access is granted, only e-mails to verified recipients will be delivered; the rest will be rejected
 synchronously by SES, which the backend will surface as a 500-response from `/registerUser` or `/updateUser`.
 
+### `SOURCE_URL`
+
+Download link for the source code.
+This must point to a repository
+where the code that is actually deployed
+can be downloaded
+to comply with the license terms
+of this project.
+
 ## Api
 
 The following endpoints are available on the backend, once deployed.
 
 ### `GET /`
 
-This endpoint will return some general information about the service. It can be used to ensure the api is online and 
-has a compatible version and to check the opening hours. It will return a `message`, which is currently always 
-`"Success"`, along with an `apiVersion`-string containing the major and minor version of the backend, and an 
-`openingHours`-object. The latter will give the current `time` (as hh:mm) in the time zone the service operates in, a 
-`status`, indicating whether the service is currently `"open"` or `"closed"`, a `description` with a human-readable 
-version of the opening hours, and a `schedule` for the next few days. The `schedule` is intended to be both 
-human-readable and machine parseable and will take things like holidays and special opening hours into account.
+This endpoint will return some general information about the service.
+It can be used to ensure the api is online and has a compatible version
+and to check the opening hours.
+It will return a `message`,
+which is currently always `"Success"`,
+along with an `apiVersion`-string
+containing the major and minor version of the backend,
+the `sourceUrl` where the code can be downloaded,
+and an `openingHours`-object.
+The latter will give the current `time` (as hh:mm)
+in the time zone the service operates in,
+a `status` indicating whether the service is currently `"open"` or `"closed"`,
+a `description` with a human-readable version of the opening hours,
+and a `schedule` for the next few days.
+The `schedule` is intended to be both human-readable and machine parseable
+and will take things like holidays and special opening hours into account.
 
 Response format:
 
@@ -210,6 +228,7 @@ Response format:
 {
     message: "Success",
     apiVersion: string,
+    sourceUrl: string,
     openingHours: {
         time: string,
         status: "open"|"closed",
@@ -225,9 +244,10 @@ Example response:
 {
     "message": "Success",
     "apiVersion": "1.0",
+    "sourceUrl": "https://github.com/valomedia/tower-backend",
     "openingHours": {
         "time": "13:37",
-        "status": "closed",
+        "status": "open",
         "schedule": {
             "2025-02-14": "08:00-12:00, 13:00-17:00",
             "2025-02-15": "",

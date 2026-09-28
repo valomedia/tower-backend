@@ -1,10 +1,21 @@
 #!/usr/bin/env node
-//
-//  deploy.js
-//  tower-backend
-//
-//  Copyright © 2024 valo.media GmbH. All rights reserved.
-//
+/*
+ * Copyright (c) 2023-2026 valo.media GmbH
+ * All rights reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 // NODE_ENV should always be production.
 process.env.NODE_ENV = 'production';
@@ -38,7 +49,8 @@ let
     hoursDescription,
     tz,
     mailFromAddress,
-    mailDomain;
+    mailDomain,
+    sourceUrl;
 
 let disablePrintingLogs = false;
 
@@ -123,7 +135,14 @@ function parseArgs() {
 function loadEnv() {
     dotenv.config({ path: env(config) });
 
-    for (let i of ['AWS_REGION', 'AWS_CLOUDFORMATION_STACK', 'AWS_S3_BUCKET', 'AWS_SAM_STAGE_NAME', 'AUTH_URL']) {
+    for (let i of [
+        'AWS_REGION',
+        'AWS_CLOUDFORMATION_STACK',
+        'AWS_S3_BUCKET',
+        'AWS_SAM_STAGE_NAME',
+        'AUTH_URL',
+        'SOURCE_URL'
+    ]) {
         if (!process.env[i] || !process.env[i].trim()) {
             console.log(`Missing required environment variable ${i}`);
             process.exit(1);
@@ -147,6 +166,8 @@ function loadEnv() {
     mailDomain = mailFromAddress
         ? (mailFromAddress.match(/<([^>]+)>\s*$/)?.[1] ?? mailFromAddress).split('@')[1] ?? ''
         : '';
+    sourceUrl = process.env.SOURCE_URL;
+
     if (mailFromAddress && !mailDomain) {
         console.log(`Could not extract a domain from MAIL_FROM_ADDRESS=${mailFromAddress}`);
         process.exit(1);
@@ -215,7 +236,8 @@ let parameterOverrides = [
     ['HoursDescription', hoursDescription],
     ['Tz', tz],
     ['MailFromAddress', mailFromAddress],
-    ['MailDomain', mailDomain]
+    ['MailDomain', mailDomain],
+    ['SourceUrl', sourceUrl]
 ].map(([key, value]) => `${key}="${value || ''}"`);
 spawnOrFail(
     'sam',
