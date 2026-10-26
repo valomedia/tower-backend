@@ -2,7 +2,7 @@
 #
 # Dev container for tower-backend.
 #
-# Copyright © 2024 valo.media GmbH. All rights reserved.
+# Copyright © 2026 valo.media GmbH. All rights reserved.
 #
 
 FROM mcr.microsoft.com/devcontainers/typescript-node:5.2.3-24-bookworm
