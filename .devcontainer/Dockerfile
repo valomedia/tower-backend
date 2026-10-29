@@ -3,7 +3,7 @@
 # Dev container for tower-backend.
 #
 
-FROM mcr.microsoft.com/devcontainers/typescript-node:5.2.3-24-bookworm
+FROM mcr.microsoft.com/devcontainers/typescript-node:5.2.5-24-bookworm
 
 ENV PIPX_BIN_DIR=/usr/local/bin \
     PIPX_HOME=/opt/pipx
