@@ -11,4 +11,4 @@ permissions:
 
 jobs:
   ci:
-    uses: valomedia/github-workflows/.github/workflows/node-npm-ci.yml@3db4e67ced211fbe0092fd9b66e024837e575c65 # v1.2.0
+    uses: valomedia/github-workflows/.github/workflows/node-npm-ci.yml@0e24ac0bdeb710a9d37ff088d95fe8789a8d4516 # v1.2.1
