@@ -1,5 +1,5 @@
 {
-  "name": "Tower Backend",
+  "name": "${containerWorkspaceFolderBasename}",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
