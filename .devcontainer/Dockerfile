@@ -9,7 +9,7 @@ ENV PIPX_BIN_DIR=/usr/local/bin \
     PIPX_HOME=/opt/pipx
 
 # renovate: datasource=pypi depName=aws-sam-cli versioning=pep440
-ARG AWS_SAM_CLI_VERSION=1.170.0
+ARG AWS_SAM_CLI_VERSION=1.171.0
 
 RUN set -eux; \
     apt-get update; \
