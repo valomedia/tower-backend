@@ -2,6 +2,84 @@
 
 AWS SAM backend for Tower.
 
+## Local development
+
+Use Node.js 22.13+ (Node 24 is provided by the devcontainer) and npm.
+No Docker daemon, cloud account, credentials, or assistant account setup is needed for the local server.
+
+```sh
+npm ci
+npm run dev
+```
+
+The server listens on `http://127.0.0.1:3001`.
+The command installs the Lambda development dependencies and compiles the local entry point into `build-local/`.
+Stop with Ctrl+C and rerun after source changes;
+every launch starts with an empty in-memory database and image store.
+It reuses the deployed API handlers, including profile validation, queue expiry, and meeting ownership checks.
+
+Protected endpoints still require a syntactically valid Basic authorization header,
+but **any username and password are accepted**.
+The username identifies the assistant for call records;
+passwords are not checked or stored.
+For example:
+
+```sh
+curl http://127.0.0.1:3001/
+curl -u anyone:anything http://127.0.0.1:3001/assistanceToken
+curl -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:3001/registerUser
+```
+
+ACS identities and tokens are fake and cannot authorize real calls.
+Queue and call-record flows can be tested through the API,
+but media calls, data channels, and ACS SDK initialization are not supported.
+A frontend using the real ACS SDK may reject these tokens or attempt to contact ACS;
+mock its calling stack separately when testing those screens offline.
+No confirmation emails are sent.
+Image URL endpoints return temporary local links supporting JPEG uploads and downloads,
+with a 10 MiB request limit and single-use upload links.
+All backend service dependencies are local;
+the server does not load deployment `.env` or `.secrets` files or use cloud credentials from the shell.
+
+Local-only environment options:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LOCAL_PORT` | `3001` | HTTP listening port. |
+| `LOCAL_HOST` | `127.0.0.1` | Bind address; use `0.0.0.0` only when explicitly needed for container access. |
+| `LOCAL_ORIGIN` | `http://localhost:3000` | Allowed browser origin for credentialed CORS requests. |
+| `LOCAL_PUBLIC_URL` | `http://127.0.0.1:<LOCAL_PORT>` | Browser-reachable origin for image links, if forwarding changes the hostname or port. |
+| `LOCAL_PROXY_ORIGIN` | Unset | Additional trusted frontend proxy target origin, when its Host/Origin headers differ from the public URL. |
+
+For Tower Staff, set `TOWER_PROXY_TARGET=http://127.0.0.1:3001` when starting its development server.
+When the frontend runs in another container, use a reachable backend address instead.
+For example, with a proxy target of `http://tower-backend:3001`,
+set `LOCAL_HOST=0.0.0.0` and `LOCAL_PROXY_ORIGIN=http://tower-backend:3001` on the backend,
+and set `LOCAL_PUBLIC_URL` to the browser-reachable origin for image links.
+Only explicitly configured origins and local hostnames are accepted.
+Never expose this unauthenticated development service to an untrusted network
+or make its forwarded port public.
+Production builds do not include the local entry point or its mocks.
+
+### Optional Docker-in-Docker devcontainer
+
+The standard `.devcontainer/devcontainer.json` is unchanged and does not enable Docker-in-Docker.
+To opt in, select `.devcontainer/docker/devcontainer.json`
+when opening/rebuilding the repository in a devcontainer
+(in VS Code, use **Dev Containers: Reopen in Container** and select the Docker configuration).
+It reuses the existing Node/SAM image,
+adds the Docker-in-Docker feature,
+and forwards port 3001.
+Run `npm run dev` inside the container;
+no server is started automatically.
+
+**Docker-in-Docker requires a privileged container and weakens container isolation.**
+Use this configuration only with a trusted repository on a suitable development host.
+The local server itself does not require Docker;
+this alternative is for workflows that also need nested containers.
+The configuration is covered by static checks;
+actual privileged-container startup must be verified on a Docker-capable host.
+
 ## Usage
 
 To deploy the service, configure the environment variables and execute the deploy-script.

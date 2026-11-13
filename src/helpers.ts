@@ -79,7 +79,7 @@ export const userFromItem = (
         Email
     }: DynamoStringNumberAttributes
 ): UserRecord | undefined => {
-    if (!Username?.S || !CommunicationUserId?.S) {return;}
+    if (Username?.S === undefined || !CommunicationUserId?.S) {return;}
     return {
         username: Username.S,
         communicationUserId: CommunicationUserId.S,

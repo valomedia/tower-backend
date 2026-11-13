@@ -1,0 +1,30 @@
+{
+  "name": "${containerWorkspaceFolderBasename}",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "../.."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "npm ci && npm --prefix src ci",
+  "forwardPorts": [3001],
+  "portsAttributes": {
+    "3001": {
+      "label": "Tower local backend (insecure development only)",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "amazonwebservices.aws-toolkit-vscode",
+        "dbaeumer.vscode-eslint"
+      ]
+    },
+    "jetbrains": {
+      "backend": "WebStorm"
+    }
+  }
+}

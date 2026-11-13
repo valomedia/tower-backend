@@ -2,7 +2,7 @@
 # .gitignore
 # tower-backend
 #
-# Copyright © 2024 valo.media GmbH. All rights reserved.
+# Copyright © 2024-2026 valo.media GmbH. All rights reserved.
 #
 
 #
@@ -11,6 +11,7 @@
 
 build/
 build-test/
+build-local/
 
 #
 # Dependencies
