@@ -55,10 +55,25 @@ import {
 } from './helpers';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import {createLocalIdentityClient, getLocalConfig, getLocalPrincipalId} from './local';
 
-const ddb = new DynamoDBClient({ region: process.env.AWS_REGION! });
-const s3 = new S3Client({ region: process.env.AWS_REGION! });
-const ses = new SESv2Client({ region: process.env.AWS_REGION! });
+const localConfig = getLocalConfig();
+const ddb = new DynamoDBClient({
+    region: process.env.AWS_REGION!,
+    ...(localConfig && {
+        endpoint: localConfig.dynamodbEndpoint,
+        credentials: {accessKeyId: 'local', secretAccessKey: 'local'}
+    })
+});
+const s3 = new S3Client({
+    region: process.env.AWS_REGION!,
+    ...(localConfig && {
+        endpoint: localConfig.s3Endpoint,
+        credentials: {accessKeyId: 'local', secretAccessKey: 'local'},
+        forcePathStyle: true
+    })
+});
+const ses = localConfig ? undefined : new SESv2Client({ region: process.env.AWS_REGION! });
 
 // Read environment.
 const assistanceRequestsTableName = process.env.ASSISTANCE_REQUESTS_TABLE_NAME!;
@@ -85,10 +100,12 @@ const hoursDescription = process.env.HOURS_DESCRIPTION!;
 const uploadBucket = process.env.UPLOAD_BUCKET!;
 const sourceUrl = process.env.SOURCE_URL!;
 
-const communicationIdentityClient = new CommunicationIdentityClient(
-    communicationServicesEndpoint,
-    new AzureKeyCredential(communicationServicesAccesskey)
-);
+const communicationIdentityClient = localConfig
+    ? createLocalIdentityClient()
+    : new CommunicationIdentityClient(
+        communicationServicesEndpoint,
+        new AzureKeyCredential(communicationServicesAccesskey)
+    );
 
 const ASSISTANCE_REQUESTS_BY_AGE_QUERY: QueryCommandInput = {
     TableName: assistanceRequestsTableName,
@@ -468,6 +485,11 @@ export const createImageDownloadUrlHandler: Handler = async (event) => {
  */
 export const authHandler: Handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
     const token = event.authorizationToken;
+    if (localConfig) {
+        const principalId = getLocalPrincipalId(token);
+        if (!principalId) {throw 'Unauthorized';}
+        return generatePolicy(principalId, 'Allow');
+    }
     const principalId = Buffer.from(token.split(' ')[1], 'base64').toString('utf-8').split(':')[0];
 
     return new Promise((resolve, reject) =>
@@ -714,6 +736,7 @@ const logAbandonment = async (caller: string, startDateTime: Date, endDateTime: 
  * @param recipient  The address to send the confirmation to.
  */
 const sendEmailConfirmation = async (recipient: string): Promise<void> => {
+    if (!ses) {return;}
     if (!mailFromAddress) {
         console.warn('MAIL_FROM_ADDRESS is not configured; skipping confirmation e-mail');
         return;

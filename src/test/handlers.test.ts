@@ -23,6 +23,7 @@
 
 import test, {mock} from 'node:test';
 import assert from 'node:assert/strict';
+import https from 'node:https';
 import {
     DeleteItemCommand,
     DynamoDBClient,
@@ -33,6 +34,9 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import {isUUID} from '../helpers';
 
+// This file runs separately from local.test.ts and exercises production initialization.
+delete process.env.TOWER_LOCAL;
+delete process.env.AWS_SAM_LOCAL;
 process.env.AWS_REGION = 'eu-central-1';
 process.env.ASSISTANCE_REQUESTS_TABLE_NAME = 'AssistanceRequests';
 process.env.CALL_RECORDS_TABLE_NAME = 'CallRecords';
@@ -52,6 +56,27 @@ const callHandler = async (handler: any, body: unknown, principalId = 'assistant
         authorizer: {principalId}
     }
 }, {}, () => {});
+
+test('production auth still forwards Basic credentials to the HTTPS auth service', async t => {
+    const {authHandler} = await import('../handlers.js');
+    const authorizationToken = `Basic ${Buffer.from('assistant.alice:password:with:colons').toString('base64')}`;
+    const send = t.mock.method(https, 'request', (url: string, options: https.RequestOptions,
+        callback: (response: {statusCode: number}) => void) => {
+        assert.equal(url, process.env.AUTH_URL);
+        assert.equal(options.method, 'HEAD');
+        assert.deepEqual(options.headers, {authorization: authorizationToken});
+        const request = {
+            on: () => request,
+            end: () => callback({statusCode: 200})
+        };
+        return request;
+    });
+
+    const result = await authHandler({authorizationToken}, {} as any, () => {});
+    assert.equal(result.principalId, 'assistant.alice');
+    assert.equal(result.policyDocument.Statement[0].Effect, 'Allow');
+    assert.equal(send.mock.callCount(), 1);
+});
 
 test('beginAssistanceHandler returns a meeting id and stores billable call timestamps', async () => {
     const {beginAssistanceHandler} = await import('../handlers.js');

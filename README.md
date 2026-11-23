@@ -2,6 +2,161 @@
 
 AWS SAM backend for Tower.
 
+## Local development
+
+Run the real Lambda handlers through `sam local start-api`,
+with disposable DynamoDB Local and S3Mock containers:
+
+```sh
+npm ci
+npm run local
+```
+
+Prerequisites: Node.js 24, npm, a running local Docker daemon,
+and AWS SAM CLI with Node.js 24 and Lambda-authorizer support
+(the devcontainer pins a suitable version).
+AWS/Azure accounts, credentials, and assistant accounts are not needed.
+The first launch downloads container images and installs/builds the Lambda dependencies.
+The API listens at `http://127.0.0.1:3001`, without a stage prefix.
+A local-only adapter forwards requests to SAM on loopback port 3002,
+adding the Basic-auth challenge and credentialed CORS headers that SAM omits on gateway errors.
+Routes, authorizers, and handlers still run in SAM.
+Restart `npm run local` after source changes to rebuild.
+
+**Local mode is intentionally insecure.**
+Any Basic-auth username/password pair is accepted;
+use invented credentials, not real passwords.
+The username identifies the assistant for queue and meeting operations.
+ACS identities/tokens are fake: no calls or media sessions can be established.
+Clients using the ACS calling SDK may also need a client-side mock
+if they require a working ACS connection before displaying their UI.
+Confirmation email is disabled.
+Image upload/download URLs point to S3Mock on `http://127.0.0.1:4569`;
+S3Mock accepts presigned URLs but does not enforce their signatures or expiry.
+Do not expose any of these ports publicly or use real personal data.
+
+Each launch creates an isolated Docker network, an empty in-memory database,
+and empty image storage.
+The launcher derives table keys/indexes and API routes from `template.yaml`,
+so all SAM Lambda containers share the same local data.
+Ctrl+C, SIGTERM, startup failure, or SAM exit triggers cleanup.
+After a forced kill, follow the run-scoped recovery steps below;
+SAM processes and Lambda containers can survive independently of the launcher.
+Even after a crash, a new launch never reuses the old database.
+DynamoDB Local does not perform background TTL deletion;
+the backend still filters expired assistance requests.
+
+The launcher does not load `.env*` or `.secrets*`,
+uses dummy AWS credentials and isolated AWS configuration files,
+and does not deploy anything.
+The generated template under ignored `.local/` enables `TOWER_LOCAL=true`;
+the handlers additionally require SAM's `AWS_SAM_LOCAL=true` before using mocks.
+The deployment template and normal production behavior are unchanged.
+Never deploy the generated local template.
+
+### Docker-in-Docker devcontainer (opt-in)
+
+Select `.devcontainer/docker/devcontainer.json` when opening the repository
+in a devcontainer, then run `npm run local` inside it.
+This reuses the normal Dockerfile (Node.js and SAM)
+and adds the official Docker-in-Docker feature.
+**DinD requires a privileged container and weakens container isolation.**
+Only select it in a trusted environment that permits privileged containers.
+The standard `.devcontainer/devcontainer.json` remains unchanged.
+No host Docker socket or cloud credentials are mounted.
+Keep forwarded ports 3001 and 4569 private and on the same local port numbers,
+so returned image URLs remain reachable.
+This setup expects a local Docker daemon or the opt-in DinD configuration,
+not a remote Docker daemon or a host-socket-mounted container.
+
+### Local configuration
+
+Only these launcher options are read from the shell:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TOWER_LOCAL_PORT` | `3001` | API adapter loopback port |
+| `TOWER_LOCAL_SAM_PORT` | `3002` | Internal SAM loopback port; do not forward it to the browser |
+| `TOWER_LOCAL_S3_PORT` | `4569` | S3Mock loopback port, also used in returned URLs |
+| `TOWER_LOCAL_ORIGIN` | `http://localhost:3000` | Allowed browser origin, without a trailing slash |
+
+For example, for a frontend on port 5173:
+
+```sh
+TOWER_LOCAL_ORIGIN=http://localhost:5173 npm run local
+```
+
+Point the frontend API endpoint or development proxy at `http://127.0.0.1:3001`, not the internal SAM port.
+All three local ports must differ.
+When changing browser-facing ports in a devcontainer, update the forwarded ports accordingly.
+For browser-managed Basic auth, use a same-origin frontend development proxy where possible.
+If the browser suppresses a cross-origin login dialog,
+open the configured API's `/assistanceToken` URL directly in the same browser,
+enter invented credentials, then return to the frontend.
+Use the same API hostname and port throughout so the browser can reuse those credentials.
+URLs using loopback refer to the browser's machine;
+remote-device testing is not configured by this launcher.
+
+### Local smoke test
+
+With the server running in another terminal:
+
+```sh
+curl --fail http://127.0.0.1:3001/
+# No credentials: expect 401, WWW-Authenticate: Basic, and credentialed CORS headers.
+curl -i -H 'Origin: http://localhost:3000' http://127.0.0.1:3001/assistanceToken
+curl --fail -u alice:anything http://127.0.0.1:3001/assistanceToken
+curl --fail -X POST http://127.0.0.1:3001/registerUser \
+  -H 'Content-Type: application/json' -d '{"firstName":"Local"}'
+```
+
+Also open `/assistanceToken` in a fresh browser session and verify the Basic-auth prompt;
+authenticate with invented credentials and confirm the staff frontend can use that identity.
+Adjust the smoke test's Origin header if `TOWER_LOCAL_ORIGIN` is customized.
+
+Use the returned `userId` to POST `{"userId":"<userId>"}` to `/requestAssistance`,
+then `/awaitAssistance` at least every ten seconds.
+With `-u alice:anything`, GET `/offerAssistance`, POST `/beginAssistance`,
+and POST `{"meeting":"<returned-meeting-id>"}` to `/endAssistance`.
+An empty database should return `{}` from `/offerAssistance` after a restart.
+To test storage, POST `{}` to `/createImageUploadUrl` with Basic auth,
+PUT an image to the returned `uploadUrl` with `Content-Type: image/jpeg`,
+then POST `{"key":"<returned-key>"}` to `/createImageDownloadUrl`
+and GET the returned URL.
+
+`npm test` covers the local mocks, cloud isolation, template/schema parity,
+launcher process behavior, and static devcontainer configuration.
+Loopback HTTP tests exercise the initial unauthenticated challenge, proxy streaming/cleanup,
+and SDK readiness timeouts against connected services that never respond.
+Docker/SAM integration, browser dialogs, and privileged DinD operation require the manual smoke test above;
+these automated tests are not a substitute for that runtime check.
+
+### Forced-kill recovery
+
+Recover only the failed run; do not use broad process kills or Docker prune commands.
+
+1. Inspect `ps -eo pid,ppid,pgid,args` and `docker network ls --filter name=tower-local-`.
+   Identify the full `tower-local-<UUID>` network name.
+   A surviving SAM command includes that name in `--docker-network`
+   and the matching `.local/run-*` directory in `--template`.
+   The network UUID and directory suffix are different; do not guess the directory.
+2. If that run's `scripts/local.js` process survives, send it SIGTERM and allow cleanup.
+   Otherwise stop the detached SAM process group:
+   after verifying its members and setting `SAM_PGID` to its process-group ID,
+   run `kill -TERM -- "-${SAM_PGID:?set the verified SAM process-group ID}"`.
+   Wait at least five seconds and recheck;
+   use SIGKILL on that same verified group only if it remains.
+   Stop these processes before removing containers, so SAM cannot recreate them or retain its port.
+3. Set `RUN` to the exact failed run's network name.
+   Inspect `docker ps --all --filter "network=${RUN:?set the failed run name}"`.
+   Remove **all** listed containers with `docker rm --force <verified-container-IDs>`,
+   including SAM Lambda containers whose names do not start with `tower-local-`.
+   Also remove the exact `${RUN}-s3` container, which is not attached to that network,
+   and `${RUN}-db` if still present.
+4. Once those containers are gone, remove the network with `docker network rm "$RUN"`.
+   Remove only the confirmed inactive `.local/run-*` directory after successful cleanup.
+   Skip already-absent resources and leave unidentifiable directories alone.
+
 ## Usage
 
 To deploy the service, configure the environment variables and execute the deploy-script.
