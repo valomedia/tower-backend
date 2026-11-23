@@ -34,7 +34,8 @@ Do not move Lambda dependencies into the root package unless the runtime/build l
 
 - `npm ci` installs the root script dependencies.
 - `npm test` installs `src` dependencies, compiles tests with `src/tsconfig.test.json`,
-  and runs `node --test` against `build-test/test/*.test.js`.
+  and runs `node --test` against `build-test/test/*.test.js`
+  and the root orchestration tests in `scripts/test/`.
 - `npm run lint` installs `src` dependencies and runs ESLint against the TypeScript source.
 - `npm run build` installs `src` dependencies,
   prepares production dependencies in `build/`,
@@ -65,6 +66,27 @@ and `.secrets.<config>`, which are ignored by git.
 Never commit secrets, access keys, or deployment-only local configuration.
 Do not read or print secret files unless the task explicitly requires it.
 
+## Local Development
+
+- `npm run local` builds the handlers and starts `sam local start-api`
+  with disposable DynamoDB Local and S3Mock containers.
+  It requires Docker and SAM; it does not deploy resources.
+- `scripts/local-config.js` derives local routes and table schemas from `template.yaml`.
+  Do not maintain a second route list or database schema.
+- `scripts/local-proxy.js` supplies the Basic challenge and CORS headers SAM omits on gateway errors.
+  Point browsers at the adapter (3001), not internal SAM (3002).
+  Keep routing and authorization in SAM.
+- SDK bootstrap requests need `throwOnRequestTimeout: true`;
+  Smithy's `requestTimeout` otherwise only warns.
+  Readiness checks must pass their deadline-linked signal to in-flight SDK requests.
+- Local mocks require both `TOWER_LOCAL=true` and `AWS_SAM_LOCAL=true`.
+  Keep arbitrary-password authentication and cloud-service mocks out of the deployment template.
+  Never load deployment env/secrets files in the local launcher.
+- `.devcontainer/docker/devcontainer.json` is the opt-in privileged DinD configuration.
+  Keep DinD out of the standard devcontainer.
+- `npm test` includes static local configuration and runtime-mock checks.
+  Actual SAM/Docker networking, image transfers, and restart reset need the README smoke test.
+
 ## Deployment Safety
 
 Deployment requires authenticated `aws` and `sam` CLIs and can change AWS resources.
@@ -80,6 +102,7 @@ Do not hand-edit or commit generated output under:
 
 - `build/`
 - `build-test/`
+- `.local/` (generated local SAM configuration)
 - `node_modules/`
 - `src/node_modules/`
 
